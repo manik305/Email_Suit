@@ -1,0 +1,112 @@
+# Implementation Plan - Region-Aware Email Open and Click Tracking
+
+We will design a tracking mechanism for email views (opens) and link clicks that behaves dynamically based on the target **Region** of each Campaign. This ensures compliance with local laws (such as GDPR in Europe, CAN-SPAM/CCPA in the US, DPDPA in India, PDPA in APAC, and PDPL in the Middle East).
+
+---
+
+## Regional Compliance Overview
+
+Here is how tracking will be governed across different campaign target regions:
+
+| Region | Regulatory Body / Law | Tracking Allowance | Implementation Strategy |
+| :--- | :--- | :--- | :--- |
+| **United States** | CAN-SPAM, CCPA/CPRA | Fully allowed | Standard 1x1 tracking pixel and URL redirection. Requires a clear unsubscribe link in all emails. |
+| **Europe** | GDPR, ePrivacy Directive | Restricted (Requires Consent/Legitimate Interest) | Tracking is permitted but we must ensure data privacy. We will allow campaign-level toggle or opt-out, and log tracking securely with the ability to delete/anonymize upon request. |
+| **India** | DPDPA (2023) | Restricted (Notice & Consent) | Requires clear privacy notices. Tracking will be logged, but the recipient must have a clear option to unsubscribe and access their data. |
+| **APAC** | Singapore (PDPA), Australia (Privacy Act) | Notification/Consent Required | Requires transparent disclosure of tracking. Opt-out (unsubscribe) must be honored immediately. |
+| **Middle East** | UAE (PDPL), Saudi Arabia (PDPL) | Consent Required | Requires consent or valid grounds. Redirection and pixel loads will be logged responsibly. |
+
+---
+
+## Proposed Database & Schema Changes
+
+### 1. [MODIFY] [schema.sql](file:///c:/Users/manik/Downloads/Email%20Suit/backend/schema.sql)
+We will add regional metadata to campaigns, and tracking fields to recipients and events.
+
+*   Add a `target_region` column to the `campaigns` table:
+    ```sql
+    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS target_region VARCHAR(100) DEFAULT 'US';
+    ```
+*   Add tracking columns to the `recipients` table:
+    ```sql
+    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS clicked_at TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS open_count INTEGER DEFAULT 0 NOT NULL;
+    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS click_count INTEGER DEFAULT 0 NOT NULL;
+    ```
+*   Create a `recipient_events` table to log granular view and click details:
+    ```sql
+    CREATE TABLE IF NOT EXISTS public.recipient_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        recipient_id UUID REFERENCES public.recipients(id) ON DELETE CASCADE,
+        event_type VARCHAR(50) NOT NULL, -- 'open' | 'click'
+        link_url TEXT,
+        ip_address VARCHAR(100),
+        user_agent TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+    );
+    ```
+
+---
+
+## Proposed Changes
+
+### [Component: Database Models]
+
+#### [MODIFY] [models.py](file:///c:/Users/manik/Downloads/Email%20Suit/backend/app/models.py)
+*   Update the `Campaign` class to include `target_region: Optional[str] = "US"`.
+*   Update the `Recipient` class to include:
+    *   `opened_at: Optional[datetime] = None`
+    *   `clicked_at: Optional[datetime] = None`
+    *   `open_count: int = 0`
+    *   `click_count: int = 0`
+*   Create a new model class `RecipientEvent(PostgresModel)` matching the `recipient_events` table.
+
+---
+
+### [Component: Tracking API Router]
+
+#### [NEW] [tracking.py](file:///c:/Users/manik/Downloads/Email%20Suit/backend/app/api/tracking.py)
+Implement the endpoints for recording views and clicks:
+*   `GET /api/track/open/{recipient_id}`:
+    *   Find the recipient and campaign region.
+    *   Log the event in `recipient_events` (anonymize IP if the campaign is targeted at Europe/GDPR to protect privacy).
+    *   Increment `open_count` and update `opened_at` on the recipient.
+    *   Return a transparent 1x1 GIF image with correct headers (`Content-Type: image/gif`).
+*   `GET /api/track/click/{recipient_id}`:
+    *   Find the recipient.
+    *   Log the click event in `recipient_events`.
+    *   Increment `click_count` and update `clicked_at` on the recipient.
+    *   Return a `307 Temporary Redirect` to the target redirect URL.
+
+---
+
+### [Component: Email Sending Logic]
+
+#### [MODIFY] [email_service.py](file:///c:/Users/manik/Downloads/Email%20Suit/backend/app/email_service.py)
+*   In the sending pipeline, fetch the campaign's `target_region`.
+*   If `target_region` allows tracking (e.g., US, or GDPR/APAC/ME/India with appropriate anonymization/consent defaults applied):
+    *   Parse the HTML email body.
+    *   Append the `<img>` tag at the bottom of the body.
+    *   Rewrite URLs in the HTML body to point to the redirect link.
+*   Ensure all emails contain a footer with a working unsubscribe link.
+
+---
+
+### [Component: Dashboard UI]
+
+#### [MODIFY] [Dashboard.tsx](file:///c:/Users/manik/Downloads/Email%20Suit/frontend/src/pages/Dashboard.tsx)
+*   Add campaign open rate and click rate counters.
+*   Show statistics categorized by region or campaign.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+*   Add unit tests verifying that tracking URLs are correctly generated.
+*   Add tests verifying tracking endpoints record events in Postgres database and return the appropriate responses (1x1 pixel image or HTTP 307 redirect).
+
+### Manual Verification
+*   Send a test email with US region and verify tracking image loads and URL redirection works.
+*   Send a test email with Europe region and verify IP addresses are anonymized or handled securely.

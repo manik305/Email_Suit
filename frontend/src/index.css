@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#FCFAF2] text-slate-800 antialiased selection:bg-[#E6DFCF] selection:text-slate-900;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Premium micro-animations & glass elements */
+.cream-panel {
+  background: rgba(253, 251, 247, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(230, 223, 207, 0.5);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.02);
+}
+
+.cream-card {
+  background: #FCFAF5;
+  border: 1px solid rgba(220, 212, 195, 0.4);
+  box-shadow: 0 2px 12px rgba(139, 130, 110, 0.04);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cream-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(139, 130, 110, 0.08);
+  border-color: rgba(200, 190, 170, 0.8);
+}
+
+/* Custom premium scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F8F5EC;
+}
+::-webkit-scrollbar-thumb {
+  background: #E0D9C8;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #C8BEAA;
+}
+

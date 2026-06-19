@@ -1,0 +1,46 @@
+# Implementation Plan - Hybrid Authentication (Supabase OTP & Custom SMTP Validation Flow)
+
+We will support both authentication mechanisms:
+1.  **Supabase Auth OTP Flow:** Standard user registration and authentication, leveraging Supabase's built-in email delivery for verifying Gmail and corporate accounts.
+2.  **Custom SMTP Handshake & 60s OTP Flow:** Direct email verification (active SMTP handshake check to detect real vs fake email IDs) and a 60-second OTP registration/regeneration pipeline for authenticating without external services.
+
+---
+
+## 1. Custom SMTP Email Verification Pipeline
+For verifying the active status of any corporate or personal email address on signup:
+1.  **Syntax Check:** Validate using the `email-validator` library.
+2.  **DNS MX Resolution:** Resolve the domain's mail exchanger (MX) server using Python's `dnspython` (already installed).
+3.  **SMTP Verification Handshake:** Connect to the resolved SMTP mail server on port 25, initiate `HELO`, specify sender, and run `RCPT TO: <user@domain.com>`. If the server returns `250 OK`, the address exists. Quit immediately without sending.
+
+---
+
+## 2. Custom 60-Second OTP Verification & Regeneration
+For local credential verification:
+*   Set OTP expiration to 60 seconds (`timedelta(seconds=60)`).
+*   Add a `/resend-otp` endpoint to generate a new 6-digit OTP, send it via local email configurations, and reset the 60-second timer.
+
+---
+
+## 3. Supabase Auth OTP Verification
+For standard authentication:
+*   Integrate Supabase Auth signup (`POST {SUPABASE_URL}/auth/v1/signup`) which automatically dispatches the verification token.
+*   Integrate Supabase Auth token verification (`POST {SUPABASE_URL}/auth/v1/verify`) during signup verification.
+
+---
+
+## Proposed Changes
+
+### [Component: Authentication Router]
+
+#### [MODIFY] [auth.py](file:///c:/Users/manik/Downloads/Email%20Suit/backend/app/api/auth.py)
+*   Update OTP expiry to `60` seconds for custom verification.
+*   Implement `POST /resend-otp` for regenerating OTPs with a new 60s expiry.
+*   Integrate Supabase REST client actions for standard signups/logins.
+*   Add the SMTP handshake check function to validate email authenticity on register request.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+*   Add unit tests in `scratch/test_custom_auth.py` verifying both SMTP handshake validity checks and Supabase Auth flow integrations.
