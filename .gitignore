@@ -6,6 +6,18 @@
 # Markdown files
 *.md
 
+# Document files
+*.pdf
+*.docx
+*.doc
+*.xlsx
+*.xls
+*.csv
+*.ppt
+*.pptx
+*.txt
+!requirements.txt
+
 # Python
 __pycache__/
 *.py[cod]
