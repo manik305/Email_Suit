@@ -33,7 +33,7 @@ router = APIRouter()
 # JWT Config
 SECRET_KEY = os.getenv("JWT_SECRET", "emailsaas-super-secret-key-2026")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
+ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 60 minutes / 1 hour
 
 # Request Schemas
 class RegisterRequest(BaseModel):
@@ -60,21 +60,68 @@ class MicrosoftOAuthRequest(BaseModel):
     email: EmailStr
 
 # Helper Functions
-def _send_otp_email_sync(to_email: str, otp: str, expires_minutes: int, is_registration: bool = True):
-    """Blocking SMTP dispatch helper."""
-    host = os.getenv("DEFAULT_SMTP_HOST") or os.getenv("SMTP_HOST") or "smtp.gmail.com"
-    port = int(os.getenv("DEFAULT_SMTP_PORT") or os.getenv("SMTP_PORT") or "587")
-    user = os.getenv("DEFAULT_SMTP_USER") or os.getenv("SMTP_USERNAME") or ""
-    password = os.getenv("DEFAULT_SMTP_PASSWORD") or os.getenv("SMTP_PASSWORD") or ""
+def _send_otp_email_sync(to_email: str, otp: str, expires_minutes: int, is_registration: bool = True) -> bool:
+    """Blocking SMTP dispatch helper with fallback mechanism."""
+    providers = []
+    
+    # 1. Primary SMTP
+    primary_user = os.getenv("DEFAULT_SMTP_USER") or os.getenv("SMTP_USERNAME") or ""
+    primary_pass = os.getenv("DEFAULT_SMTP_PASSWORD") or os.getenv("SMTP_PASSWORD") or ""
+    if primary_user and primary_pass:
+        providers.append({
+            "name": "Primary SMTP",
+            "host": os.getenv("DEFAULT_SMTP_HOST") or os.getenv("SMTP_HOST") or "smtp.gmail.com",
+            "port": int(os.getenv("DEFAULT_SMTP_PORT") or os.getenv("SMTP_PORT") or "587"),
+            "user": primary_user,
+            "password": primary_pass
+        })
+        
+    # 2. Gmail Fallback
+    gmail_user = os.getenv("GMAIL_SMTP_USERNAME") or os.getenv("GMAIL_SMTP_USER") or ""
+    gmail_pass = os.getenv("GMAIL_SMTP_PASSWORD") or ""
+    if gmail_user and gmail_pass:
+        providers.append({
+            "name": "Gmail Fallback",
+            "host": os.getenv("GMAIL_SMTP_HOST") or "smtp.gmail.com",
+            "port": int(os.getenv("GMAIL_SMTP_PORT") or "587"),
+            "user": gmail_user,
+            "password": gmail_pass
+        })
 
-    if not user or not password:
-        logger.warning("SMTP credentials not fully configured in environment, email dispatch skipped.")
-        return
+    # 3. Microsoft Fallback
+    ms_user = os.getenv("MICROSOFT_SMTP_USERNAME") or os.getenv("MICROSOFT_SMTP_USER") or ""
+    ms_pass = os.getenv("MICROSOFT_SMTP_PASSWORD") or ""
+    if ms_user and ms_pass:
+        providers.append({
+            "name": "Microsoft Fallback",
+            "host": os.getenv("MICROSOFT_SMTP_HOST") or "smtp.office365.com",
+            "port": int(os.getenv("MICROSOFT_SMTP_PORT") or "587"),
+            "user": ms_user,
+            "password": ms_pass
+        })
 
+    # 4. Hostinger Fallback
+    hostinger_user = os.getenv("HOSTINGER_SMTP_USERNAME") or os.getenv("HOSTINGER_SMTP_USER") or ""
+    hostinger_pass = os.getenv("HOSTINGER_SMTP_PASSWORD") or ""
+    if hostinger_user and hostinger_pass:
+        providers.append({
+            "name": "Hostinger Fallback",
+            "host": os.getenv("HOSTINGER_SMTP_HOST") or "smtp.hostinger.com",
+            "port": int(os.getenv("HOSTINGER_SMTP_PORT") or "587"),
+            "user": hostinger_user,
+            "password": hostinger_pass
+        })
+
+    if not providers:
+        logger.warning("No SMTP providers fully configured in environment, email dispatch skipped.")
+        return False
+
+    # Choose the first provider's username for the From header as a fallback/default
+    sender_user = providers[0]["user"]
     msg = MIMEMultipart("alternative")
     action_type = "Activate Your Account" if is_registration else "Secure Log In Verification"
     msg["Subject"] = f"🔑 {otp} is your Digio Click verification code"
-    msg["From"] = f"Digio Click Security <{user}>"
+    msg["From"] = f"Digio Click Security <{sender_user}>"
     msg["To"] = to_email
 
     html = f"""
@@ -162,19 +209,30 @@ def _send_otp_email_sync(to_email: str, otp: str, expires_minutes: int, is_regis
     msg.attach(MIMEText(f"Your verification code is: {otp} (valid for {expires_minutes} minutes)", "plain"))
     msg.attach(MIMEText(html, "html"))
 
-    with smtplib.SMTP(host, port, timeout=12) as server:
-        server.ehlo()
-        server.starttls()
-        server.ehlo()
-        server.login(user, password)
-        server.sendmail(user, to_email, msg.as_string())
+    for prov in providers:
+        try:
+            logger.info("Attempting to send OTP email via provider: %s (%s:%s)", prov["name"], prov["host"], prov["port"])
+            # Update From header to match the current sending provider user
+            msg.replace_header("From", f"Digio Click Security <{prov['user']}>")
+            with smtplib.SMTP(prov["host"], prov["port"], timeout=12) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(prov["user"], prov["password"])
+                server.sendmail(prov["user"], to_email, msg.as_string())
+            
+            logger.info("✉️ OTP Email sent successfully to %s via %s", to_email, prov["name"])
+            return True
+        except Exception as exc:
+            logger.warning("⚠️ Failed to dispatch OTP email via provider %s: %s", prov["name"], exc)
+            
+    logger.error("❌ All SMTP providers failed to dispatch OTP email to %s", to_email)
+    raise RuntimeError("All SMTP providers failed to send OTP email")
 
-async def send_otp_email(to_email: str, otp: str, expires_minutes: int, is_registration: bool = True):
+async def send_otp_email(to_email: str, otp: str, expires_minutes: int, is_registration: bool = True) -> bool:
     """Wrapper to run SMTP sync IO safely in a background thread."""
     try:
-        await asyncio.to_thread(_send_otp_email_sync, to_email, otp, expires_minutes, is_registration)
-        logger.info("✉️ OTP Email sent successfully to %s", to_email)
-        return True
+        return await asyncio.to_thread(_send_otp_email_sync, to_email, otp, expires_minutes, is_registration)
     except Exception as exc:
         logger.error("❌ Failed to dispatch SMTP OTP email to %s: %s", to_email, exc)
         return False
@@ -462,6 +520,124 @@ async def resend_otp(payload: ResendOtpRequest):
     }
 
 
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordVerifyRequest(BaseModel):
+    email: EmailStr
+    otp: str
+
+class ResetPasswordConfirmRequest(BaseModel):
+    email: EmailStr
+    otp: str
+    password: str
+
+@router.post("/reset-password-request")
+async def reset_password_request(payload: ResetPasswordRequest):
+    """Stage 1: Generate OTP for password reset and email it to the user."""
+    email = payload.email.lower().strip()
+    user = await User.find_one(email=email)
+
+    if not user:
+        return {
+            "status": "success",
+            "message": "If this email is registered, a password reset verification code has been sent.",
+            "email": email,
+            "simulated": True
+        }
+
+    # Generate 6-digit OTP valid for 10 minutes
+    otp = f"{random.randint(100000, 999999)}"
+    user.otp = otp
+    user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+    await user.save()
+
+    # Dispatch OTP via email
+    sent = await send_otp_email(email, otp, expires_minutes=10, is_registration=False)
+
+    print(f"\n🔑 [EmailSaaS DEV OTP] PASSWORD RESET Request for {email} -> {otp}\n")
+
+    return {
+        "status": "success",
+        "message": "Verification code dispatched. Please check your email.",
+        "email": email,
+        "simulated": not sent
+    }
+
+@router.post("/reset-password-verify")
+async def reset_password_verify(payload: ResetPasswordVerifyRequest):
+    """Stage 2: Verify the reset password OTP code."""
+    email = payload.email.lower().strip()
+    user = await User.find_one(email=email)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account not found."
+        )
+
+    if not user.otp or not user.otp_expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No verification session active. Please request a new code."
+        )
+
+    # Check expiration and matching code
+    if datetime.now(timezone.utc) > user.otp_expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code has expired. Please request a new one."
+        )
+
+    if user.otp != payload.otp.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification code. Please check and try again."
+        )
+
+    return {
+        "status": "success",
+        "message": "OTP verified successfully. You may now choose a new password."
+    }
+
+@router.post("/reset-password-confirm")
+async def reset_password_confirm(payload: ResetPasswordConfirmRequest):
+    """Stage 3: Set a new password and clear the OTP session."""
+    email = payload.email.lower().strip()
+    user = await User.find_one(email=email)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account not found."
+        )
+
+    if not user.otp_expires_at or datetime.now(timezone.utc) > user.otp_expires_at:
+         raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Reset password session expired. Please request a new verification code."
+        )
+
+    if not user.otp or user.otp != payload.otp.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification session is invalid. Please restart the process."
+        )
+
+    # Update the password
+    user.hashed_password = hash_pwd(payload.password)
+    user.otp = None
+    user.otp_expires_at = None
+    user.is_verified = True
+    await user.save()
+
+    logger.info("🔑 User %s reset password successfully", email)
+    return {
+        "status": "success",
+        "message": "Your password has been reset successfully. You may now sign in."
+    }
+
+
 @router.post("/google-oauth")
 async def google_oauth(payload: GoogleOAuthRequest):
     """Simulated Google Workspace OAuth bypass callback. Instantly issues real JWT."""
@@ -571,4 +747,3 @@ async def get_current_user_email(authorization: Optional[str] = Header(None)) ->
         return email if email else "architect@emailsaas.com"
     except Exception:
         return "architect@emailsaas.com"
-

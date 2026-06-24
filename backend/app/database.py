@@ -21,11 +21,18 @@ async def init_db() -> None:
     """Initialize the PostgreSQL connection pool and execute schema if not initialized."""
     global db_pool
     try:
+        # Configure keepalives to prevent silent idle disconnects by firewalls/Supabase AWS load balancer
         db_pool = await asyncpg.create_pool(
             DATABASE_URL,
             min_size=2,
             max_size=10,
-            command_timeout=60
+            command_timeout=60,
+            server_settings={
+                "keepalives": "1",
+                "keepalives_idle": "30",
+                "keepalives_interval": "10",
+                "keepalives_count": "5"
+            }
         )
         logger.info("✅ Connected to Supabase PostgreSQL database.")
         
@@ -36,7 +43,7 @@ async def init_db() -> None:
                 schema_sql = f.read()
             # Normalize line endings to Unix format to guarantee replacement matching
             schema_sql = schema_sql.replace("\r\n", "\n")
-            if "supabase.co" in DATABASE_URL:
+            if "supabase.co" in DATABASE_URL or "supabase.com" in DATABASE_URL:
                 # Remove local-development auth schema/table helper creation since Supabase auth is system-managed
                 schema_sql = schema_sql.replace("CREATE SCHEMA IF NOT EXISTS auth;", "")
                 schema_sql = schema_sql.replace(

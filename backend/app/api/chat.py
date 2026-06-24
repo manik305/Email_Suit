@@ -26,7 +26,7 @@ class ChatRequest(BaseModel):
     model: str
     messages: List[ChatMessage]
     max_tokens: int = 500
-    temperature: float = 0.7
+    temperature: float = 0.3
 
 def _mock_response(request: ChatRequest) -> dict:
     """Return a simulated response for testing without a real API key."""

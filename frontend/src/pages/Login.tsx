@@ -9,12 +9,14 @@ const LoginPage: React.FC = () => {
   
   // Tab Mode: 'signin' | 'register'
   const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
-  // Authentication Step: 'credentials' | 'otp' | 'reset_password'
-  const [step, setStep] = useState<'credentials' | 'otp' | 'reset_password'>('credentials');
+  // Authentication Step: 'credentials' | 'otp' | 'reset_password' | 'reset_password_otp' | 'reset_password_confirm'
+  const [step, setStep] = useState<'credentials' | 'otp' | 'reset_password' | 'reset_password_otp' | 'reset_password_confirm'>('credentials');
 
   const [authLevel, setAuthLevel] = useState<'admin' | 'agent'>('admin');
   const [email, setEmail] = useState('architect@emailsaas.com');
   const [password, setPassword] = useState('SecurePassword123');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
   
   const [rememberMe, setRememberMe] = useState(true);
@@ -22,8 +24,6 @@ const LoginPage: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   
-  // Dev Sandbox Helper OTP storage
-  const [devOtp, setDevOtp] = useState('');
   const [countdown, setCountdown] = useState(0);
 
   // SSO Simulator states
@@ -61,7 +61,6 @@ const LoginPage: React.FC = () => {
     setStep('credentials');
     setErrorMessage('');
     setSuccessMessage('');
-    setDevOtp('');
     
     // Fill default test credentials
     if (mode === 'signin') {
@@ -93,7 +92,6 @@ const LoginPage: React.FC = () => {
     setIsLoggingIn(true);
     setErrorMessage('');
     setSuccessMessage('');
-    setDevOtp('');
 
     try {
       const endpoint = authMode === 'signin' ? '/auth/login-request' : '/auth/register-request';
@@ -116,9 +114,6 @@ const LoginPage: React.FC = () => {
       setStep('otp');
       setCountdown(60); // 60s countdown
       setSuccessMessage(data.message || 'OTP sent successfully.');
-      if (data.dev_otp) {
-        setDevOtp(data.dev_otp);
-      }
     } catch (err: any) {
       setErrorMessage(err.message || 'Server connection issue.');
     } finally {
@@ -154,7 +149,6 @@ const LoginPage: React.FC = () => {
         setStep('credentials');
         setSuccessMessage('Account verified successfully! You can now sign in.');
         setOtpCode('');
-        setDevOtp('');
       } else {
         // Login complete -> Store JWT & session details
         localStorage.setItem('access_token', data.access_token);
@@ -181,7 +175,6 @@ const LoginPage: React.FC = () => {
     setIsLoggingIn(true);
     setErrorMessage('');
     setSuccessMessage('');
-    setDevOtp('');
 
     try {
       const endpoint = authMode === 'signin' ? '/auth/login-request' : '/auth/register-request';
@@ -202,9 +195,6 @@ const LoginPage: React.FC = () => {
 
       setCountdown(60);
       setSuccessMessage('A fresh passcode was sent to your email.');
-      if (data.dev_otp) {
-        setDevOtp(data.dev_otp);
-      }
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to resend code.');
     } finally {
@@ -212,14 +202,98 @@ const LoginPage: React.FC = () => {
     }
   };
 
-  // Reset password handler simulation
-  const handleResetPasswordSubmit = (e: React.FormEvent) => {
+  // Forgot password flow handlers
+  const handleResetPasswordRequestSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSuccessMessage(`A password reset link has been dispatched to ${email}.`);
-    setTimeout(() => {
-      setStep('credentials');
-      setSuccessMessage('');
-    }, 3000);
+    setIsLoggingIn(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/reset-password-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Reset password request failed.');
+      }
+
+      setSuccessMessage(data.message || 'Reset code sent successfully.');
+      setStep('reset_password_otp');
+      setCountdown(600); // 10 minutes expiry
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Connection error.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleResetPasswordOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoggingIn(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/reset-password-verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp: otpCode }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Invalid verification code.');
+      }
+
+      setSuccessMessage(data.message || 'Code verified. Set your new password.');
+      setStep('reset_password_confirm');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Verification failed.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleResetPasswordConfirmSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setErrorMessage('Passwords do not match.');
+      return;
+    }
+
+    setIsLoggingIn(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/reset-password-confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp: otpCode, password: newPassword }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Failed to update password.');
+      }
+
+      setSuccessMessage(data.message || 'Your password was successfully updated.');
+      setTimeout(() => {
+        setStep('credentials');
+        setNewPassword('');
+        setConfirmPassword('');
+        setOtpCode('');
+        setSuccessMessage('');
+      }, 2000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Update failed.');
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   // Google / Microsoft SSO Trigger
@@ -374,9 +448,9 @@ const LoginPage: React.FC = () => {
             <div>
               <div className="flex items-baseline justify-between">
                 <h2 className="text-2xl font-bold text-slate-800 tracking-tight">
-                  {step === 'reset_password' ? 'Reset Password' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
+                  {step === 'reset_password' || step === 'reset_password_otp' || step === 'reset_password_confirm' ? 'Reset Password' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
                 </h2>
-                {step !== 'reset_password' && (
+                {step === 'credentials' && (
                   <button
                     onClick={() => handleModeSwitch(authMode === 'signin' ? 'register' : 'signin')}
                     className="text-xs text-[#4BA7C9] hover:underline font-semibold"
@@ -398,27 +472,6 @@ const LoginPage: React.FC = () => {
               <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-semibold flex items-start gap-2">
                 <span>✅</span>
                 <span>{successMessage}</span>
-              </div>
-            )}
-
-            {/* DEV AUTO FILL WIDGET */}
-            {devOtp && step === 'otp' && (
-              <div className="p-3 bg-[#EAF2F8] border border-blue-200 rounded-xl text-xs flex flex-col gap-2">
-                <div className="flex justify-between items-center text-blue-800 font-semibold font-mono">
-                  <span>🤖 Dev Sandbox Mode</span>
-                </div>
-                <div className="flex gap-2 items-center">
-                  <code className="bg-white border border-slate-200 text-slate-800 font-mono px-3 py-1.5 rounded-lg text-sm font-bold flex-1 text-center">
-                    {devOtp}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => setOtpCode(devOtp)}
-                    className="bg-[#4BA7C9] hover:bg-[#3F93B5] text-white font-semibold px-3 py-1.5 rounded-lg text-[11px] transition-all"
-                  >
-                    Auto-Fill
-                  </button>
-                </div>
               </div>
             )}
 
@@ -560,16 +613,22 @@ const LoginPage: React.FC = () => {
                 </div>
                 <button
                   type="submit"
-                  className="w-full py-3 bg-[#51A2C3] text-white font-bold rounded-xl shadow-md"
+                  className="w-full py-3 bg-[#51A2C3] text-white font-bold rounded-xl shadow-md text-sm"
                 >
                   Verify Code
                 </button>
               </form>
             )}
 
-            {/* RESET PASSWORD VIEW */}
+            {/* RESET PASSWORD REQUEST VIEW */}
             {step === 'reset_password' && (
-              <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+              <form onSubmit={handleResetPasswordRequestSubmit} className="space-y-4">
+                <div className="text-center">
+                  <h3 className="text-lg font-bold text-slate-800">Reset password</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Enter your email to receive a password reset verification code.
+                  </p>
+                </div>
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-slate-700" htmlFor="resetEmail">
                     Email address
@@ -579,7 +638,8 @@ const LoginPage: React.FC = () => {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:outline-none"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#4BA7C9] text-sm"
+                    placeholder="name@company.com"
                     required
                   />
                 </div>
@@ -587,17 +647,102 @@ const LoginPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setStep('credentials')}
-                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm"
+                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-3 bg-[#51A2C3] text-white font-bold rounded-xl text-sm"
+                    className="flex-1 py-3 bg-[#51A2C3] text-white font-bold rounded-xl text-sm transition"
                   >
-                    Reset Password
+                    Send Code
                   </button>
                 </div>
+              </form>
+            )}
+
+            {/* RESET PASSWORD OTP VERIFICATION VIEW */}
+            {step === 'reset_password_otp' && (
+              <form onSubmit={handleResetPasswordOtpSubmit} className="space-y-5">
+                <div className="text-center">
+                  <h3 className="text-lg font-bold text-slate-800">Reset Verification Code</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Please check your mailbox at <strong className="text-slate-700">{email}</strong>
+                  </p>
+                </div>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  className="w-full text-center py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-2xl font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-[#4BA7C9]"
+                  required
+                />
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setStep('reset_password')}
+                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 bg-[#51A2C3] text-white font-bold rounded-xl text-sm transition"
+                  >
+                    Verify Code
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* RESET PASSWORD CONFIRMATION VIEW */}
+            {step === 'reset_password_confirm' && (
+              <form onSubmit={handleResetPasswordConfirmSubmit} className="space-y-4">
+                <div className="text-center">
+                  <h3 className="text-lg font-bold text-slate-800">Set New Password</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Set a secure, brand-new password for <strong className="text-slate-700">{email}</strong>
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700" htmlFor="newPassword">
+                    New Password
+                  </label>
+                  <input
+                    id="newPassword"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#4BA7C9] text-sm"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700" htmlFor="confirmPassword">
+                    Confirm Password
+                  </label>
+                  <input
+                    id="confirmPassword"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#4BA7C9] text-sm"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-[#51A2C3] text-white font-bold rounded-xl shadow-md text-sm mt-2 transition"
+                >
+                  Save & Confirm Password
+                </button>
               </form>
             )}
 
