@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - Main
 
 jobs:
   build-and-push:
@@ -40,6 +41,18 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Copy docker-compose.yml via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "docker-compose.yml"
+          target: "/var/www/emailsas"
+
       - name: SSH and Deploy to VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -47,14 +60,14 @@ jobs:
           username: root
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            # Create app directory if not exists
-            mkdir -p /var/www/emailsas
-            
-            # Copy docker-compose.yml from repository context if needed, or pull latest images
+            # Navigate to app directory
             cd /var/www/emailsas
             
             # Docker login using secrets passed through env
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+            
+            # Export DOCKERHUB_USERNAME so Docker Compose can resolve it
+            export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
             
             # Pull the latest Docker images
             docker compose pull
