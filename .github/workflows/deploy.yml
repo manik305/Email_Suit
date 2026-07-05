@@ -68,6 +68,9 @@ jobs:
             docker stop backend frontend || true
             docker rm backend frontend || true
 
+            # Prune unused images and layers to free up disk space
+            docker system prune -f
+
             # Pull latest ECR images
             docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REP }}:latest
             docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REP }}:latest
