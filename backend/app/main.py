@@ -10,19 +10,23 @@ from fastapi.responses import FileResponse
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-from app.database import init_db
+from app.database import init_db, close_db
 from app.scheduler import start_scheduler, stop_scheduler
-from app.api import auth, campaign, data, config, chat, meetings, tracking
+from app.api import auth, campaign, data, config, chat, meetings, tracking, project
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ── startup ──
     await init_db()
-    start_scheduler()
+    run_scheduler = os.getenv("RUN_SCHEDULER", "True").lower() in ("true", "1", "yes")
+    if run_scheduler:
+        start_scheduler()
     yield
     # ── shutdown ──
-    stop_scheduler()
+    if run_scheduler:
+        stop_scheduler()
+    await close_db()
 
 
 app = FastAPI(title="SaaS Email Campaign API", lifespan=lifespan)
@@ -48,6 +52,7 @@ app.include_router(config.router,   prefix="/api/v1/config",     tags=["Email Co
 app.include_router(chat.router,     prefix="/api/v1/chat",       tags=["Chat / AI Copilot"])
 app.include_router(meetings.router, prefix="/api/v1/meetings",   tags=["Meeting Scheduler"])
 app.include_router(tracking.router, prefix="/api/track",        tags=["Email Tracking"])
+app.include_router(project.router,  prefix="/api/v1/projects",     tags=["Project Management"])
 
 
 # Serve frontend static files

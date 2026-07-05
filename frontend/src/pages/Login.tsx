@@ -1,20 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import digioClickLogo from '../assets/Digio-click-logo.jpeg';
+import { Mascot3D, MascotState } from '../components/Mascot3D';
 
 const isLocalDev = window.location.port === '5173' || window.location.port === '5174';
 const API_BASE_URL = isLocalDev ? 'http://localhost:8000/api/v1' : '/api/v1';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isAdminPortal = location.pathname === '/super-admin';
+  const [mascotState, setMascotState] = useState<MascotState>('touching');
   
   // Tab Mode: 'signin' | 'register'
   const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
-  // Authentication Step: 'credentials' | 'otp' | 'reset_password' | 'reset_password_otp' | 'reset_password_confirm'
-  const [step, setStep] = useState<'credentials' | 'otp' | 'reset_password' | 'reset_password_otp' | 'reset_password_confirm'>('credentials');
+  // Authentication Step: 'credentials' | 'otp' | 'reset_password' | 'reset_password_otp' | 'reset_password_confirm' | 'select_workspace'
+  const [step, setStep] = useState<'credentials' | 'otp' | 'reset_password' | 'reset_password_otp' | 'reset_password_confirm' | 'select_workspace'>('credentials');
 
-  const [authLevel, setAuthLevel] = useState<'admin' | 'agent'>('admin');
-  const [email, setEmail] = useState('architect@emailsaas.com');
+  const [workspaceOptions, setWorkspaceOptions] = useState<any[]>([]);
+  const [tempSelectedWorkspaceId, setTempSelectedWorkspaceId] = useState<string>('');
+
+  const [authLevel, setAuthLevel] = useState<'admin' | 'agent'>(isAdminPortal ? 'admin' : 'agent');
+  const [email, setEmail] = useState(isAdminPortal ? 'architect@emailsaas.com' : 'outreach.specialist@emailsaas.com');
   const [password, setPassword] = useState('SecurePassword123');
+
+  // Sync auth level and email when entering/exiting admin portal path
+  useEffect(() => {
+    setAuthLevel(isAdminPortal ? 'admin' : 'agent');
+    setEmail(isAdminPortal ? 'architect@emailsaas.com' : 'outreach.specialist@emailsaas.com');
+    setPassword('SecurePassword123');
+  }, [isAdminPortal]);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
@@ -50,8 +65,13 @@ const LoginPage: React.FC = () => {
   // Redirect to dashboard if already logged in
   useEffect(() => {
     const token = localStorage.getItem('access_token');
+    const role = localStorage.getItem('auth_level');
     if (token) {
-      navigate('/dashboard');
+      if (role === 'admin') {
+        navigate('/projects');
+      } else {
+        navigate('/dashboard');
+      }
     }
   }, [navigate]);
 
@@ -150,16 +170,34 @@ const LoginPage: React.FC = () => {
         setSuccessMessage('Account verified successfully! You can now sign in.');
         setOtpCode('');
       } else {
-        // Login complete -> Store JWT & session details
+        // Store JWT credentials & session details
         localStorage.setItem('access_token', data.access_token);
         localStorage.setItem('auth_level', data.user.role);
         localStorage.setItem('user_email', data.user.email);
         localStorage.setItem('last_activity', Date.now().toString());
 
         // Redirection with smooth feedback
-        setSuccessMessage('Identity verified. Redirecting to workspace...');
+        setSuccessMessage('Identity verified. Loading workspaces...');
+        
+        // Fetch projects for workspace selection popup
+        try {
+          const projRes = await fetch(`${API_BASE_URL}/projects/`, {
+            headers: { 'Authorization': `Bearer ${data.access_token}` }
+          });
+          if (projRes.ok) {
+            const projData = await projRes.json();
+            setWorkspaceOptions(projData);
+            if (projData.length > 0) {
+              setTempSelectedWorkspaceId(projData[0].id);
+            }
+          }
+        } catch (projErr) {
+          console.error("Failed to load workspaces for selector", projErr);
+        }
+
         setTimeout(() => {
-          navigate('/dashboard');
+          setStep('select_workspace');
+          setSuccessMessage('');
         }, 800);
       }
     } catch (err: any) {
@@ -167,6 +205,20 @@ const LoginPage: React.FC = () => {
     } finally {
       setIsLoggingIn(false);
     }
+  };
+
+  const handleWorkspaceSelectSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tempSelectedWorkspaceId) {
+      setErrorMessage('Please select a workspace project to enter.');
+      return;
+    }
+    localStorage.setItem('selected_project_id', tempSelectedWorkspaceId);
+    
+    setSuccessMessage('Workspace project selected. Loading command center...');
+    setTimeout(() => {
+      navigate('/dashboard');
+    }, 800);
   };
 
   // Resend OTP handler
@@ -341,14 +393,31 @@ const LoginPage: React.FC = () => {
         setAuthProgressText('Establishing OAuth secure session token...');
       }, 1000);
 
-      setTimeout(() => {
+      setTimeout(async () => {
         setShowNotification(false);
         localStorage.setItem('access_token', data.access_token);
         localStorage.setItem('auth_level', data.user.role);
         localStorage.setItem('user_email', data.user.email);
         localStorage.setItem('last_activity', Date.now().toString());
         setIsLoggingIn(false);
-        navigate('/dashboard');
+
+        // Fetch projects for workspace selection popup
+        try {
+          const projRes = await fetch(`${API_BASE_URL}/projects/`, {
+            headers: { 'Authorization': `Bearer ${data.access_token}` }
+          });
+          if (projRes.ok) {
+            const projData = await projRes.json();
+            setWorkspaceOptions(projData);
+            if (projData.length > 0) {
+              setTempSelectedWorkspaceId(projData[0].id);
+            }
+          }
+        } catch (projErr) {
+          console.error("Failed to load workspaces for selector", projErr);
+        }
+
+        setStep('select_workspace');
       }, 1500);
 
     } catch (err: any) {
@@ -359,15 +428,29 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 md:p-8 font-inter relative overflow-hidden bg-[#E2EFEC]" style={{
+    <div className="min-h-screen w-full flex items-center justify-center p-4 md:p-8 font-inter relative overflow-hidden bg-[#F0F4F8]" style={{
       backgroundImage: `
-        radial-gradient(at 0% 0%, #E3EFE5 0px, transparent 50%),
-        radial-gradient(at 50% 0%, #FAF6EA 0px, transparent 50%),
-        radial-gradient(at 100% 0%, #E5EEF0 0px, transparent 50%),
-        radial-gradient(at 100% 100%, #FAF6EA 0px, transparent 50%),
-        radial-gradient(at 0% 100%, #E2EDF2 0px, transparent 50%)
+        radial-gradient(at 0% 0%, #E0F2FE 0px, transparent 50%),
+        radial-gradient(at 50% 0%, #EEF2F6 0px, transparent 50%),
+        radial-gradient(at 100% 0%, #E0E7FF 0px, transparent 50%),
+        radial-gradient(at 100% 100%, #F1F5F9 0px, transparent 50%),
+        radial-gradient(at 0% 100%, #E0F2FE 0px, transparent 50%)
       `
     }}>
+      {isLoggingIn && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[9999] flex flex-col items-center justify-center animate-in fade-in duration-200">
+          <div className="bg-white/95 border border-slate-200/50 rounded-3xl p-8 shadow-2xl flex flex-col items-center max-w-sm mx-4 transform animate-in zoom-in-95 duration-200 text-center">
+            {/* 3D Loading Mascot Visual */}
+            <Mascot3D state="loading" size={160} className="mb-4" />
+            <h3 className="text-lg font-bold text-slate-800 font-inter">Authenticating...</h3>
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              Your Digio Hero is verifying credentials and securing your marketing workspace.
+            </p>
+            {/* Spinning Loader Ring */}
+            <div className="w-6 h-6 border-2 border-[#51A2C3] border-t-transparent rounded-full animate-spin mt-6"></div>
+          </div>
+        </div>
+      )}
       
       {/* Centered Login Card Container */}
       <div className="w-full max-w-5xl bg-white rounded-3xl shadow-xl border border-slate-200/50 flex flex-col md:flex-row overflow-hidden relative z-10 min-h-[620px]">
@@ -376,29 +459,43 @@ const LoginPage: React.FC = () => {
         <div className="w-full md:w-[42%] bg-[#E6EFF6] p-8 flex flex-col justify-between relative overflow-hidden border-r border-slate-100">
           
           {/* Logo Section */}
-          <div className="flex items-center gap-2.5">
-            {/* Funnel/Play Logo replacement */}
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-[#3F93B5] via-[#4BA7C9] to-[#71C4E4] flex items-center justify-center shadow-sm">
-              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M3 3h18v2l-7 8v6l-4 2v-8L3 5V3z" />
-              </svg>
-            </div>
+          <div className="flex items-center gap-3">
+            {/* Official Logo */}
+            <img src={digioClickLogo} alt="Digio Click Logo" className="w-10 h-10 object-contain rounded-xl shadow-sm border border-slate-100 bg-white p-0.5" />
             <div>
               <h1 className="text-xl font-black text-slate-800 tracking-tight leading-none">
                 DigioClick
               </h1>
-              <span className="text-[8px] uppercase tracking-wider text-slate-500 font-semibold block mt-0.5">Marketing Automation</span>
+              <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold block mt-0.5">
+                Turning Clicks Into Clients
+              </span>
             </div>
           </div>
 
-          {/* Welcome Text */}
-          <div className="my-auto py-8">
-            <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-1.5">
-              Welcome back! <span className="animate-bounce">👋</span>
-            </h2>
-            <p className="text-slate-600 mt-3 text-sm leading-relaxed font-medium">
-              Get AI generated prospects and sales messages that can help you convert
-            </p>
+          {/* Welcome Text & Mascot */}
+          <div className="my-auto py-8 space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-1.5">
+                Welcome back! <span className="animate-bounce">👋</span>
+              </h2>
+              <p className="text-slate-600 mt-3 text-sm leading-relaxed font-medium">
+                Get AI generated prospects and sales messages that can help you convert
+              </p>
+            </div>
+
+            {/* 3D Mascot Interactive Chamber */}
+            <div className="bg-white/85 backdrop-blur-md border border-slate-200/50 rounded-3xl p-5 shadow-sm flex flex-col items-center gap-4 hover:scale-[1.01] transition-all duration-300 relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#E6EFF6] to-transparent pointer-events-none opacity-40" />
+              
+              <Mascot3D state="touching" size={220} className="relative z-10" />
+              
+              <div className="w-full text-center relative z-10 mt-1">
+                <p className="text-xs font-extrabold text-slate-800 tracking-wide uppercase">Interactive Digio Hero</p>
+                <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
+                  Hover to tilt in 3D and see interactive touch ripples.
+                </p>
+              </div>
+            </div>
 
             {/* Dashboard Mini-Preview (Fidelity Mockup) */}
             <div className="mt-8 bg-white/90 border border-slate-200/60 rounded-xl shadow-lg p-3.5 relative transform hover:scale-[1.02] transition-transform duration-300">
@@ -480,35 +577,37 @@ const LoginPage: React.FC = () => {
               <form onSubmit={handleCredentialsSubmit} className="space-y-4">
                 
                 {/* ROLE SELECTOR (ADMIN / SUPER ADMIN / CAMPAIGN LEVEL) */}
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                    Access Permission Level
-                  </label>
-                  <div className="grid grid-cols-2 gap-2 bg-[#F8F9FA] p-1 border border-slate-200 rounded-xl">
-                    <button
-                      type="button"
-                      onClick={() => handleAuthLevelChange('admin')}
-                      className={`py-1.5 px-3 text-xs font-bold rounded-lg transition-all ${
-                        authLevel === 'admin'
-                          ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      Admin / Super Admin
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAuthLevelChange('agent')}
-                      className={`py-1.5 px-3 text-xs font-bold rounded-lg transition-all ${
-                        authLevel === 'agent'
-                          ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      Campaign Manager
-                    </button>
+                {isAdminPortal && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                      Access Permission Level
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 bg-[#F8F9FA] p-1 border border-slate-200 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => handleAuthLevelChange('admin')}
+                        className={`py-1.5 px-3 text-xs font-bold rounded-lg transition-all ${
+                          authLevel === 'admin'
+                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Admin / Super Admin
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAuthLevelChange('agent')}
+                        className={`py-1.5 px-3 text-xs font-bold rounded-lg transition-all ${
+                          authLevel === 'agent'
+                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Campaign Manager
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* EMAIL */}
                 <div className="space-y-1.5">
@@ -611,12 +710,84 @@ const LoginPage: React.FC = () => {
                     Resend Code
                   </button>
                 </div>
+                <p className="text-[10px] text-center font-semibold text-slate-400 bg-slate-50 border border-slate-100 p-2 rounded-lg mt-2">
+                  💡 Sandbox Mode: You can enter <strong>123456</strong> as the bypass OTP.
+                </p>
                 <button
                   type="submit"
                   className="w-full py-3 bg-[#51A2C3] text-white font-bold rounded-xl shadow-md text-sm"
                 >
                   Verify Code
                 </button>
+              </form>
+            )}
+
+            {/* WORKSPACE SELECTION VIEW */}
+            {step === 'select_workspace' && (
+              <form onSubmit={handleWorkspaceSelectSubmit} className="space-y-5">
+                <div className="text-center">
+                  <h3 className="text-lg font-bold text-slate-800">Select Project Workspace</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Please select a project context to load your outreach campaigns, meetings, and analytics.
+                  </p>
+                </div>
+
+                {workspaceOptions.length === 0 ? (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center space-y-3">
+                    <p className="text-xs text-slate-500 font-medium">
+                      {localStorage.getItem('auth_level') === 'admin'
+                        ? 'No active workspaces found. Please proceed to the selection hub to create your first workspace.'
+                        : 'No assigned workspaces found. Please contact your administrator to grant you access to a project.'}
+                    </p>
+                    {localStorage.getItem('auth_level') === 'admin' ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate('/projects')}
+                        className="py-2 px-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition"
+                      >
+                        Go to Workspace Builder
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          localStorage.removeItem('access_token');
+                          localStorage.removeItem('auth_level');
+                          localStorage.removeItem('user_email');
+                          window.location.href = '/';
+                        }}
+                        className="py-2 px-4 bg-slate-200 hover:bg-slate-350 text-slate-700 font-bold rounded-xl text-xs transition"
+                      >
+                        Log Out
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <label htmlFor="workspaceSelect" className="block text-xs font-semibold text-slate-700">Available Workspaces</label>
+                      <select
+                        id="workspaceSelect"
+                        value={tempSelectedWorkspaceId}
+                        onChange={(e) => setTempSelectedWorkspaceId(e.target.value)}
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-[#4BA7C9] text-sm"
+                      >
+                        {workspaceOptions.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            📁 {w.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-3 bg-[#51A2C3] hover:bg-[#3F93B5] text-white font-bold rounded-xl shadow-md transition-all active:scale-[0.98] text-sm"
+                    >
+                      Enter Workspace
+                    </button>
+                  </>
+                )}
               </form>
             )}
 
@@ -679,6 +850,9 @@ const LoginPage: React.FC = () => {
                   className="w-full text-center py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-2xl font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-[#4BA7C9]"
                   required
                 />
+                <p className="text-[10px] text-center font-semibold text-slate-400 bg-slate-50 border border-slate-100 p-2 rounded-lg my-2">
+                  💡 Sandbox Mode: You can enter <strong>123456</strong> as the bypass OTP.
+                </p>
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
@@ -798,15 +972,15 @@ const LoginPage: React.FC = () => {
 
       {/* SSO PROVIDER EMAIL SELECTOR MODAL */}
       {showSelectorModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6 relative overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
+          <div className="bg-white border border-slate-200 w-full max-w-md rounded-2xl shadow-2xl p-6 relative overflow-hidden animate-in fade-in zoom-in duration-200">
             
-            <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-500/10 rounded-full filter blur-xl pointer-events-none"></div>
+            <div className="absolute -top-10 -right-10 w-32 h-32 bg-blue-500/5 rounded-full filter blur-xl pointer-events-none"></div>
 
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-indigo-400">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
                   {ssoProvider === 'google' ? (
                     <svg className="w-5 h-5" viewBox="0 0 24 24">
                       <path fill="currentColor" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.69c-.29 1.5-.1.8-1.07 2.45v2.53h2.6c1.52-1.4 2.4-3.47 2.4-5.83z" />
@@ -824,10 +998,10 @@ const LoginPage: React.FC = () => {
                   )}
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">
+                  <h3 className="text-lg font-bold text-slate-800">
                     Sign in with {ssoProvider === 'google' ? 'Google' : 'Microsoft'}
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <p className="text-xs text-slate-500 mt-0.5">
                     Connect your enterprise account to authorize session.
                   </p>
                 </div>
@@ -835,7 +1009,7 @@ const LoginPage: React.FC = () => {
               <button 
                 type="button" 
                 onClick={() => setShowSelectorModal(false)}
-                className="text-slate-500 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -845,7 +1019,7 @@ const LoginPage: React.FC = () => {
 
             {/* Custom Input */}
             <div className="space-y-2 mb-6">
-              <label htmlFor="sso-custom-email" className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+              <label htmlFor="sso-custom-email" className="block text-xs font-semibold text-slate-600 uppercase tracking-wider">
                 Enter your Gmail / Account ID
               </label>
               <div className="relative">
@@ -859,17 +1033,17 @@ const LoginPage: React.FC = () => {
                     setCustomSsoEmail(e.target.value);
                     setSsoValidationError('');
                   }}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-950/60 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all font-mono text-sm"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all font-mono text-sm"
                   autoFocus
                 />
-                <div className="absolute left-3.5 top-3.5 text-slate-500">
+                <div className="absolute left-3.5 top-3.5 text-slate-400">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
               </div>
               {ssoValidationError && (
-                <p className="text-xs text-rose-400 mt-1 font-medium flex items-center gap-1">
+                <p className="text-xs text-rose-500 mt-1 font-medium flex items-center gap-1">
                   <span>⚠️</span> {ssoValidationError}
                 </p>
               )}
@@ -877,27 +1051,29 @@ const LoginPage: React.FC = () => {
 
             {/* Suggested Profiles List */}
             <div className="space-y-2 mb-6">
-              <p className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider font-mono">
+              <p className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider font-mono">
                 Suggested Sandbox Profiles (Click to instantly sign in)
               </p>
 
-              {[
+              {(isAdminPortal ? [
+                { email: `manikprabhudandothkar988@gmail.com`, label: 'Super Admin Creator' }
+              ] : [
                 { email: `growth.marketer@digioclick.com`, label: 'Growth Marketer Pro' },
                 { email: `ceo.enterprise@digioclick.com`, label: 'Enterprise Executive' },
                 { email: `outreach.specialist@digioclick.com`, label: 'Lead Outreach Agent' }
-              ].map(p => (
+              ]).map(p => (
                 <div 
                   key={p.email}
                   onClick={() => {
                     executeSsoAuth(p.email);
                   }}
-                  className="p-3 rounded-xl border border-slate-800 bg-slate-900/40 hover:bg-indigo-950/20 hover:border-indigo-500/40 cursor-pointer transition-all flex items-center justify-between group"
+                  className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-blue-50/30 hover:border-blue-300 cursor-pointer transition-all flex items-center justify-between group"
                 >
                   <div className="flex flex-col">
-                    <span className="font-semibold text-xs text-slate-200 group-hover:text-white transition-colors">{p.label}</span>
-                    <span className="text-[11px] text-indigo-400 font-mono mt-0.5">{p.email}</span>
+                    <span className="font-semibold text-xs text-slate-700 group-hover:text-blue-700 transition-colors">{p.label}</span>
+                    <span className="text-[11px] text-blue-600 font-mono mt-0.5">{p.email}</span>
                   </div>
-                  <div className="opacity-0 group-hover:opacity-100 text-indigo-400 transition-opacity">
+                  <div className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
                     </svg>
@@ -911,7 +1087,7 @@ const LoginPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowSelectorModal(false)}
-                className="flex-1 py-3 bg-slate-800 hover:bg-slate-750 text-slate-300 font-semibold rounded-xl text-sm transition-all border border-slate-750"
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition-all border-0"
               >
                 Cancel
               </button>
@@ -924,7 +1100,7 @@ const LoginPage: React.FC = () => {
                   }
                   executeSsoAuth(customSsoEmail.trim());
                 }}
-                className="flex-1 py-3 bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:from-indigo-450 hover:to-purple-500 text-white font-semibold rounded-xl text-sm transition-all shadow-lg shadow-indigo-500/25 active:scale-[0.99]"
+                className="flex-1 py-3 bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 hover:from-blue-450 hover:to-indigo-500 text-white font-semibold rounded-xl text-sm transition-all shadow-lg shadow-blue-500/20 active:scale-[0.99]"
               >
                 Sign In
               </button>

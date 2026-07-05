@@ -36,6 +36,7 @@ class Recipient(PostgresModel):
     clicked_at: Optional[datetime] = None
     open_count: int = 0
     click_count: int = 0
+    send_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Backwards compatibility properties for designation/pin_code/linkedin_id
@@ -68,7 +69,7 @@ class Recipient(PostgresModel):
 
 class SmtpSettings(BaseModel):
     """SMTP delivery settings stored inside EmailConfig.settings_json."""
-    host: str = "smtp.gmail.com"
+    host: str = "smtp-relay.gmail.com"
     port: int = 587
     username: str
     password: str          # stored encrypted in production; plaintext here for MVP
@@ -101,6 +102,8 @@ class EmailConfig(PostgresModel):
     imap: Optional[ImapSettings] = None
 
     is_active: bool = True
+    daily_limit: int = 500       # max emails per day via SMTP relay for this account
+    project_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:
@@ -261,10 +264,55 @@ class Campaign(PostgresModel):
     target_region: str = "US"
     created_by: Optional[str] = None
 
+    mails_per_minute: int = 2
+    daily_fresh_limit: int = 100
+    max_contacts_per_company: int = 1
+    consecutive_failures: int = 0
+    diagnostic_error: Optional[str] = None
+    email_config_pool: Optional[List[str]] = []   # additional sending accounts for rotation
+    project_id: Optional[str] = None
+    icp_titles: Optional[List[str]] = None
+    icp_departments: Optional[List[str]] = None
+    icp_industries: Optional[List[str]] = None
+    icp_regions: Optional[List[str]] = None
+    icp_active: Optional[bool] = False
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:
         name = "campaigns"
+
+
+# ─── Project ──────────────────────────────────────────────────────────────────
+
+class Project(PostgresModel):
+    name: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "projects"
+
+
+# ─── ProjectMember ────────────────────────────────────────────────────────────
+
+class ProjectMember(PostgresModel):
+    user_id: str
+    project_id: str
+    role: str = "member" # "manager" | "member"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    _user_email: Optional[str] = None
+
+    @property
+    def user_email(self) -> Optional[str]:
+        return getattr(self, "_user_email", None)
+
+    @user_email.setter
+    def user_email(self, val: Optional[str]):
+        self._user_email = val
+
+    class Settings:
+        name = "project_members"
 
 
 # ─── Meeting ──────────────────────────────────────────────────────────────────
@@ -276,10 +324,57 @@ class Meeting(PostgresModel):
     attendee_email: str
     meet_link: Optional[str] = None
     sender_email: Optional[str] = None
+    project_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:
         name = "meetings"
+
+
+# ─── EmailConfigDailyQuota ────────────────────────────────────────────────────
+
+class EmailConfigDailyQuota(PostgresModel):
+    """
+    Tracks how many emails each EmailConfig account has sent today.
+    Keyed by (email_config_id, quota_date) with an atomic upsert counter.
+    """
+    email_config_id: str
+    quota_date: Any  # Can be date or str
+    emails_sent: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "email_config_daily_quota"
+
+    @classmethod
+    async def get_or_create_today(cls, email_config_id: str) -> 'EmailConfigDailyQuota':
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).date()
+        quota = await cls.find_one(email_config_id=email_config_id, quota_date=today)
+        if not quota:
+            quota = cls(
+                email_config_id=email_config_id,
+                quota_date=today,
+                emails_sent=0
+            )
+            try:
+                await quota.insert()
+            except Exception:
+                # Concurrent insert fallback
+                quota = await cls.find_one(email_config_id=email_config_id, quota_date=today)
+                if not quota:
+                    raise
+        return quota
+
+    async def increment(self, n: int = 1) -> None:
+        from app.database import db_pool
+        if not db_pool:
+            raise RuntimeError("Database pool not initialized.")
+        table = self.get_table_name()
+        query = f"UPDATE {table} SET emails_sent = emails_sent + $1 WHERE id = $2 RETURNING emails_sent"
+        async with db_pool.acquire() as conn:
+            new_val = await conn.fetchval(query, n, self.id)
+            self.emails_sent = new_val
 
 
 # ─── VoiceAgent ───────────────────────────────────────────────────────────────

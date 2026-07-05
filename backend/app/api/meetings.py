@@ -23,6 +23,7 @@ class MeetingRequest(BaseModel):
     attendee_email: Optional[str] = None
     description: Optional[str] = None
     sender_email: Optional[str] = None
+    project_id: Optional[str] = None
 
 @router.post("/schedule")
 async def schedule_meeting(request: MeetingRequest):
@@ -56,6 +57,7 @@ async def schedule_meeting(request: MeetingRequest):
             attendee_email=request.attendee_email or "",
             meet_link=meet_link,
             sender_email=request.sender_email,
+            project_id=request.project_id,
         )
         await meeting.insert()
 
@@ -97,17 +99,23 @@ async def schedule_meeting(request: MeetingRequest):
         )
 
 @router.get("/list")
-async def list_meetings():
-    meetings = await models.Meeting.find_all().to_list()
+async def list_meetings(project_id: Optional[str] = None):
+    if project_id:
+        meetings = await models.Meeting.find(project_id=project_id).to_list()
+    else:
+        meetings = await models.Meeting.find_all().to_list()
     return {"meetings": meetings, "total": len(meetings)}
 
 @router.get("/available-slots")
-async def get_available_slots(date: str):
+async def get_available_slots(date: str, project_id: Optional[str] = None):
     date_str = date[:10]
     
     # Retrieve all booked meetings for this date
     try:
-        booked_meetings = await models.Meeting.find(date=date_str).to_list()
+        if project_id:
+            booked_meetings = await models.Meeting.find(date=date_str, project_id=project_id).to_list()
+        else:
+            booked_meetings = await models.Meeting.find(date=date_str).to_list()
         booked_slots = {m.time for m in booked_meetings}
     except Exception as e:
         logger.error("Error retrieving booked meetings: %s", e)
@@ -138,3 +146,44 @@ async def get_available_slots(date: str):
             all_slots.append({"time": slot, "available": is_available})
             
     return {"date": date_str, "slots": all_slots}
+
+class MeetingEditRequest(BaseModel):
+    title: Optional[str] = None
+    date: Optional[str] = None
+    time_slot: Optional[str] = None
+    attendee_email: Optional[str] = None
+    description: Optional[str] = None
+    sender_email: Optional[str] = None
+    project_id: Optional[str] = None
+
+@router.patch("/{meeting_id}")
+async def update_meeting(meeting_id: str, request: MeetingEditRequest):
+    meeting = await models.Meeting.get(meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    
+    if request.title is not None:
+        meeting.title = request.title
+    if request.date is not None:
+        meeting.date = request.date[:10]
+    if request.time_slot is not None:
+        meeting.time = request.time_slot.strip()
+    if request.attendee_email is not None:
+        meeting.attendee_email = request.attendee_email or ""
+    if request.description is not None:
+        meeting.description = request.description
+    if request.sender_email is not None:
+        meeting.sender_email = request.sender_email
+    if request.project_id is not None:
+        meeting.project_id = request.project_id
+        
+    await meeting.save()
+    return meeting
+
+@router.delete("/{meeting_id}")
+async def delete_meeting(meeting_id: str):
+    meeting = await models.Meeting.get(meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    await meeting.delete()
+    return {"success": True, "message": "Meeting deleted successfully"}

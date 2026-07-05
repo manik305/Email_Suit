@@ -1,11 +1,15 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
+import digioClickLogo from './assets/Digio-click-logo.jpeg';
 import DashboardPage from './pages/Dashboard';
 import CampaignsPage from './pages/Campaigns';
 import DataFolderPage from './pages/DataFolder';
 import LoginPage from './pages/Login';
 import MeetingScheduler from './pages/MeetingScheduler';
+import ProjectHubPage from './pages/ProjectHub';
 import { Chatbot } from './components/Chatbot';
+import { useAppContext, API_BASE_URL } from './context/AppContext';
+import { Mascot3D } from './components/Mascot3D';
 
 const navIcons: Record<string, React.ReactNode> = {
   '/dashboard': (
@@ -32,6 +36,31 @@ const navIcons: Record<string, React.ReactNode> = {
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
+  const [projects, setProjects] = useState<any[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(localStorage.getItem('selected_project_id') || '');
+
+  useEffect(() => {
+    const fetchLayoutProjects = async () => {
+      try {
+        const token = localStorage.getItem('access_token');
+        if (!token) return;
+        const res = await fetch(`${API_BASE_URL}/projects/`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setProjects(data);
+          if (data.length > 0 && !selectedProjectId) {
+            setSelectedProjectId(data[0].id);
+            localStorage.setItem('selected_project_id', data[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load layout projects", err);
+      }
+    };
+    fetchLayoutProjects();
+  }, [selectedProjectId]);
 
   const navItems = [
     { name: 'Dashboard',       path: '/dashboard' },
@@ -41,18 +70,41 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   ];
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#FAF8F0] text-slate-800 font-inter">
+    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-800 font-inter">
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 border-r border-[#E2DCBE] bg-[#F4F1E6] flex flex-col relative z-40">
-        <div className="h-16 flex items-center px-5 gap-2.5 border-b border-[#E2DCBE] bg-gradient-to-r from-[#ECE6D2]/40 to-transparent">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#C5A059] to-[#8C6D3B] flex items-center justify-center shadow-sm">
-            <svg className="w-4.5 h-4.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-          <h1 className="text-lg font-bold bg-gradient-to-r from-[#8C6D3B] via-[#A88C52] to-[#C5A059] bg-clip-text text-transparent">
+      <aside className="w-64 flex-shrink-0 border-r border-slate-200 bg-white flex flex-col relative z-40">
+        <div className="h-16 flex items-center px-5 gap-3 border-b border-slate-200 bg-gradient-to-r from-blue-50/40 to-transparent">
+          <img src={digioClickLogo} alt="Digio Click Logo" className="w-8 h-8 object-contain rounded-lg shadow-sm border border-slate-200 bg-white p-0.5" />
+          <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500 bg-clip-text text-transparent">
             Digio Click
           </h1>
+        </div>
+
+        {/* Workspace Switcher */}
+        <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/30">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+            Active Workspace
+          </span>
+          <select
+            value={selectedProjectId}
+            onChange={(e) => {
+              const newId = e.target.value;
+              setSelectedProjectId(newId);
+              localStorage.setItem('selected_project_id', newId);
+              window.location.reload();
+            }}
+            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-750 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            {projects.length === 0 ? (
+              <option value="">No Workspaces</option>
+            ) : (
+              projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  📁 {p.name}
+                </option>
+              ))
+            )}
+          </select>
         </div>
         <nav className="flex-1 overflow-y-auto py-4">
           <ul className="space-y-1 px-3">
@@ -62,8 +114,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   to={item.path}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
                     location.pathname === item.path
-                      ? 'bg-[#E5DEC7] text-slate-900 shadow-sm border border-[#D0C7AA] font-medium'
-                      : 'text-slate-600 hover:bg-[#EBE5CE] hover:text-slate-900'
+                      ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100 font-semibold'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`}
                 >
                   {navIcons[item.path]}
@@ -73,7 +125,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             ))}
           </ul>
         </nav>
-        <div className="p-4 border-t border-[#E2DCBE]">
+        <div className="p-4 border-t border-slate-200">
           <button
             onClick={() => {
               localStorage.removeItem('access_token');
@@ -82,7 +134,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               localStorage.removeItem('last_activity');
               window.location.href = '/';
             }}
-            className="flex items-center justify-center w-full px-4 py-2 text-sm text-slate-600 bg-[#FAF8F0] hover:bg-[#ECE6D2] hover:text-slate-900 rounded-lg border border-[#E2DCBE] transition active:scale-[0.98]"
+            className="flex items-center justify-center w-full px-4 py-2 text-sm text-slate-600 bg-white hover:bg-slate-50 hover:text-slate-900 rounded-lg border border-slate-200 transition active:scale-[0.98]"
           >
             Logout
           </button>
@@ -90,8 +142,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </aside>
 
       {/* Main content area */}
-      <main className="flex-1 relative overflow-y-auto bg-[#FAF8F0]/30">
-        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#ECE6D2]/30 via-transparent to-transparent"></div>
+      <main className="flex-1 relative overflow-y-auto bg-slate-50/30">
+        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/30 via-transparent to-transparent"></div>
         <div className="p-8 relative z-10 cream-panel min-h-[calc(100vh-4rem)] m-6 rounded-2xl">
           {children}
         </div>
@@ -163,19 +215,41 @@ const useSessionManager = () => {
 
 const SessionWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   useSessionManager();
-  return <>{children}</>;
+  const { state } = useAppContext();
+
+  return (
+    <>
+      {state.isLoading && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[9999] flex flex-col items-center justify-center animate-in fade-in duration-200">
+          <div className="bg-white/95 border border-slate-200/50 rounded-3xl p-8 shadow-2xl flex flex-col items-center max-w-sm mx-4 transform animate-in zoom-in-95 duration-200 text-center">
+            {/* 3D Loading Mascot Visual */}
+            <Mascot3D state="loading" size={160} className="mb-4" />
+            <h3 className="text-lg font-bold text-slate-800 font-inter">Compiling Outreach Magic...</h3>
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              Your Digio Hero is preparing AI target metrics and validating prospects. Just a moment!
+            </p>
+            {/* Spinning Loader Ring */}
+            <div className="w-6 h-6 border-2 border-[#51A2C3] border-t-transparent rounded-full animate-spin mt-6"></div>
+          </div>
+        </div>
+      )}
+      {children}
+    </>
+  );
 };
 
 const App: React.FC = () => {
   return (
-    <BrowserRouter future={{ v7_relativeSplatPath: true }}>
+    <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <SessionWrapper>
         <Routes>
           <Route path="/" element={<LoginPage />} />
+          <Route path="/super-admin"  element={<LoginPage />} />
           <Route path="/dashboard"    element={<ProtectedRoute><Layout><DashboardPage /></Layout></ProtectedRoute>} />
           <Route path="/campaigns"    element={<ProtectedRoute><Layout><CampaignsPage /></Layout></ProtectedRoute>} />
           <Route path="/data-folder"  element={<ProtectedRoute><Layout><DataFolderPage /></Layout></ProtectedRoute>} />
           <Route path="/meetings"     element={<ProtectedRoute><Layout><MeetingScheduler /></Layout></ProtectedRoute>} />
+          <Route path="/projects"     element={<ProtectedRoute><ProjectHubPage /></ProtectedRoute>} />
         </Routes>
       </SessionWrapper>
     </BrowserRouter>

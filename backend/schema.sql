@@ -28,6 +28,23 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- Enable Row Level Security (RLS) on profiles
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+-- 1.5. Projects Table
+CREATE TABLE IF NOT EXISTS public.projects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 1.6. Project Members Mapping Table
+CREATE TABLE IF NOT EXISTS public.project_members (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
+    role VARCHAR(50) DEFAULT 'member' NOT NULL, -- 'manager' | 'member'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(user_id, project_id)
+);
+
 -- 2. Email Configuration (SMTP + IMAP details)
 CREATE TABLE IF NOT EXISTS public.email_configs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -35,7 +52,7 @@ CREATE TABLE IF NOT EXISTS public.email_configs (
     provider VARCHAR(50) DEFAULT 'smtp' NOT NULL, -- 'google' | 'microsoft' | 'smtp'
     sender_address VARCHAR(255) NOT NULL,
     sender_name VARCHAR(255),
-    smtp_host VARCHAR(255) DEFAULT 'smtp.gmail.com' NOT NULL,
+    smtp_host VARCHAR(255) DEFAULT 'smtp-relay.gmail.com' NOT NULL,
     smtp_port INTEGER DEFAULT 587 NOT NULL,
     smtp_username VARCHAR(255) NOT NULL,
     smtp_password VARCHAR(255) NOT NULL, -- Encrypted or plaintext for sandbox
@@ -46,6 +63,8 @@ CREATE TABLE IF NOT EXISTS public.email_configs (
     imap_password VARCHAR(255),
     imap_use_ssl BOOLEAN DEFAULT TRUE,
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    daily_limit INTEGER DEFAULT 500 NOT NULL,
+    project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -62,6 +81,13 @@ CREATE TABLE IF NOT EXISTS public.campaigns (
     send_at TIMESTAMP WITH TIME ZONE,
     timezone VARCHAR(100) DEFAULT 'America/New_York' NOT NULL,
     target_region VARCHAR(100) DEFAULT 'US' NOT NULL,
+    mails_per_minute INTEGER DEFAULT 2,
+    daily_fresh_limit INTEGER DEFAULT 100,
+    max_contacts_per_company INTEGER DEFAULT 1,
+    consecutive_failures INTEGER DEFAULT 0,
+    diagnostic_error TEXT,
+    email_config_pool JSONB DEFAULT '[]',
+    project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -94,6 +120,7 @@ CREATE TABLE IF NOT EXISTS public.recipients (
     clicked_at TIMESTAMP WITH TIME ZONE,
     open_count INTEGER DEFAULT 0 NOT NULL,
     click_count INTEGER DEFAULT 0 NOT NULL,
+    send_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -111,6 +138,17 @@ CREATE TABLE IF NOT EXISTS public.recipient_events (
     user_agent TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- 6. Email Config Daily Quota Tracker
+CREATE TABLE IF NOT EXISTS public.email_config_daily_quota (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email_config_id UUID REFERENCES public.email_configs(id) ON DELETE CASCADE,
+    quota_date DATE NOT NULL,
+    emails_sent INTEGER DEFAULT 0 NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(email_config_id, quota_date)
+);
+CREATE INDEX IF NOT EXISTS idx_quota_config_date ON public.email_config_daily_quota(email_config_id, quota_date);
 
 -- 6. Meetings
 CREATE TABLE IF NOT EXISTS public.meetings (

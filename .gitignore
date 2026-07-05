@@ -6,7 +6,13 @@
 .env.example
 
 # Markdown & Implementation plans
-*.md
+
 implementation_plan*
 azure_deployment_guide*
 hostinger_deployment_guide*
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform.lock.hcl

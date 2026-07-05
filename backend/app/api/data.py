@@ -8,7 +8,8 @@ Routes
   POST  /recipients/assign              – bulk-assign recipients to a campaign
   PATCH /recipients/{id}/campaign       – assign single recipient to campaign
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, Body
+from fastapi import APIRouter, UploadFile, File, HTTPException, Body, Query, Depends
+from app.api.auth import get_current_user_email
 import pandas as pd
 import io
 from .. import models, schemas
@@ -174,9 +175,83 @@ async def upload_data(file: UploadFile = File(...)):
 
 # ─── List recipients ──────────────────────────────────────────────────────────
 
+class RecipientCreateRequest(BaseModel):
+    email: str
+    name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    alternative_email: Optional[str] = None
+    title: Optional[str] = None
+    department: Optional[str] = None
+    company_name: Optional[str] = None
+    website: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    industry: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
+    region: Optional[str] = None
+    campaign_id: Optional[str] = None
+
+@router.post("/recipients", response_model=schemas.Recipient)
+async def create_recipient(req: RecipientCreateRequest):
+    existing = await models.Recipient.find_one(email=req.email)
+    if existing:
+        raise HTTPException(status_code=400, detail="A lead with this email address already exists.")
+        
+    recipient = models.Recipient(
+        email=req.email,
+        name=req.name or f"{req.first_name or ''} {req.last_name or ''}".strip(),
+        first_name=req.first_name,
+        last_name=req.last_name,
+        alternative_email=req.alternative_email,
+        title=req.title,
+        department=req.department,
+        company_name=req.company_name,
+        website=req.website,
+        linkedin_url=req.linkedin_url,
+        industry=req.industry,
+        state=req.state,
+        zip_code=req.zip_code,
+        country=req.country,
+        region=req.region or f"{req.state or ''}, {req.country or ''}".strip(", "),
+        campaign_id=req.campaign_id or None,
+        status="pending"
+    )
+    await recipient.insert()
+    return recipient
+
 @router.get("/recipients", response_model=List[schemas.Recipient])
-async def list_recipients():
-    return await models.Recipient.find_all().sort("-created_at").to_list()
+async def list_recipients(
+    project_id: Optional[str] = Query(None),
+    current_user_email: str = Depends(get_current_user_email)
+):
+    user = await models.User.find_one(email=current_user_email)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    if user.role == "admin":
+        if project_id:
+            campaigns = await models.Campaign.find(project_id=project_id).to_list()
+        else:
+            campaigns = await models.Campaign.find_all().to_list()
+    else:
+        memberships = await models.ProjectMember.find(user_id=user.id).to_list()
+        project_ids = {m.project_id for m in memberships}
+        if project_id:
+            if project_id not in project_ids:
+                raise HTTPException(status_code=403, detail="You do not have access to this project.")
+            campaigns = await models.Campaign.find(project_id=project_id).to_list()
+        else:
+            all_campaigns = await models.Campaign.find_all().to_list()
+            campaigns = [c for c in all_campaigns if c.project_id in project_ids]
+
+    campaign_ids = {str(c.id) for c in campaigns}
+    all_recipients = await models.Recipient.find_all().sort("-created_at").to_list()
+    
+    if project_id:
+        return [r for r in all_recipients if r.campaign_id in campaign_ids]
+    return all_recipients
 
 
 @router.get("/recipients/by-campaign/{campaign_id}", response_model=List[schemas.Recipient])
@@ -308,9 +383,139 @@ async def reset_database():
                     ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS otp VARCHAR(50);
                     ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS target_region VARCHAR(100) DEFAULT 'US' NOT NULL;
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_templates JSONB;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS created_by VARCHAR(255);
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS mails_per_minute INTEGER DEFAULT 2;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS daily_fresh_limit INTEGER DEFAULT 100;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS max_contacts_per_company INTEGER DEFAULT 1;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS consecutive_failures INTEGER DEFAULT 0;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS diagnostic_error TEXT;
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP WITH TIME ZONE;
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS clicked_at TIMESTAMP WITH TIME ZONE;
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS open_count INTEGER DEFAULT 0 NOT NULL;
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS click_count INTEGER DEFAULT 0 NOT NULL;
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS send_at TIMESTAMP WITH TIME ZONE;
+                    ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS sender_email VARCHAR(255);
+                    CREATE TABLE IF NOT EXISTS public.recipient_events (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        recipient_id UUID REFERENCES public.recipients(id) ON DELETE CASCADE,
+                        event_type VARCHAR(50) NOT NULL,
+                        link_url TEXT,
+                        ip_address VARCHAR(100),
+                        user_agent TEXT,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+                    );
+                    ALTER TABLE public.email_configs ADD COLUMN IF NOT EXISTS daily_limit INTEGER DEFAULT 500 NOT NULL;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS email_config_pool JSONB DEFAULT '[]';
+                    CREATE TABLE IF NOT EXISTS public.email_config_daily_quota (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        email_config_id UUID REFERENCES public.email_configs(id) ON DELETE CASCADE,
+                        quota_date DATE NOT NULL,
+                        emails_sent INTEGER DEFAULT 0 NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+                        UNIQUE(email_config_id, quota_date)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_quota_config_date ON public.email_config_daily_quota(email_config_id, quota_date);
+                    
+                    -- Project-Level Management Migration
+                    CREATE TABLE IF NOT EXISTS public.projects (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        name VARCHAR(255) NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS public.project_members (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+                        project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
+                        role VARCHAR(50) DEFAULT 'member' NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+                        UNIQUE(user_id, project_id)
+                    );
+                    ALTER TABLE public.email_configs ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL;
+                    ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_titles JSONB DEFAULT '[]';
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_departments JSONB DEFAULT '[]';
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_industries JSONB DEFAULT '[]';
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_regions JSONB DEFAULT '[]';
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_active BOOLEAN DEFAULT FALSE;
                 """)
                 
             return {"status": "success", "detail": "Database dropped and reset successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database reset failed: {str(e)}")
+
+
+@router.get("/recipients/{recipient_id}/preview", response_model=schemas.RecipientPreviewResponse)
+async def get_recipient_draft_preview(recipient_id: str):
+    """
+    Generate and return the exact email subject and body template preview
+    for a specific recipient, resolving all dynamic template tags.
+    """
+    recipient = await models.Recipient.get(recipient_id)
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+        
+    campaign = await models.Campaign.get(recipient.campaign_id) if recipient.campaign_id else None
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Recipient is not associated with any campaign")
+
+    sender_name = "Outreach Team"
+    if campaign.email_config_id:
+        config = await models.EmailConfig.get(campaign.email_config_id)
+        if config and config.sender_name:
+            sender_name = config.sender_name
+
+    subject_tpl = campaign.subject or f"Hi from {sender_name}"
+    body_tpl = campaign.body_template or "Hi {name},\n\nThis is an outreach from our team."
+
+    recipient_name = recipient.name or (f"{recipient.first_name} {recipient.last_name}" if recipient.first_name or recipient.last_name else "there")
+    
+    is_follow_up = (recipient.status == "sent")
+    
+    if not is_follow_up:
+        subject = subject_tpl
+        body = (
+            body_tpl
+            .replace("{name}", recipient_name)
+            .replace("{email}", recipient.email)
+            .replace("{designation}", recipient.title or "")
+            .replace("{department}", recipient.department or "")
+            .replace("{industry}", recipient.industry or "")
+            .replace("{region}", recipient.region or "")
+            .replace("{company_name}", recipient.company_name or "")
+            .replace("{company}", recipient.company_name or "")
+        )
+    else:
+        next_count = recipient.follow_up_count + 1
+        subject = f"Re: {subject_tpl}"
+        body = None
+        if campaign.follow_up_templates and len(campaign.follow_up_templates) > next_count:
+            body = campaign.follow_up_templates[next_count]
+        if not body:
+            body = (
+                f"Hi {recipient_name},\n\n"
+                f"Just following up on my previous message regarding {campaign.name}. "
+                f"I wanted to quickly check back and see if you had any thoughts or questions!\n\n"
+                f"Best regards,\n"
+                f"{sender_name}"
+            )
+        else:
+            body = (
+                body
+                .replace("{name}", recipient_name)
+                .replace("{email}", recipient.email)
+                .replace("{designation}", recipient.title or "")
+                .replace("{department}", recipient.department or "")
+                .replace("{industry}", recipient.industry or "")
+                .replace("{region}", recipient.region or "")
+                .replace("{company_name}", recipient.company_name or "")
+                .replace("{company}", recipient.company_name or "")
+            )
+
+    return {
+        "recipient_id": recipient_id,
+        "subject": subject,
+        "body": body
+    }

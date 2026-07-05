@@ -63,13 +63,46 @@ def _render_body(template: str, recipient: models.Recipient) -> str:
     )
 
 
+async def _assert_campaign_access(campaign_id: str, email: str) -> models.Campaign:
+    campaign = await _get_campaign_or_404(campaign_id)
+    user = await models.User.find_one(email=email)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    if user.role != "admin":
+        member = await models.ProjectMember.find_one(user_id=user.id, project_id=campaign.project_id)
+        if not member:
+            raise HTTPException(status_code=403, detail="You do not have access to this campaign's project.")
+    return campaign
+
+
 # ─── List / Create ────────────────────────────────────────────────────────────
 
 @router.get("/", response_model=List[schemas.Campaign])
-async def list_campaigns(current_user_email: str = Depends(get_current_user_email)):
+async def list_campaigns(
+    project_id: Optional[str] = Query(None),
+    current_user_email: str = Depends(get_current_user_email)
+):
+    user = await models.User.find_one(email=current_user_email)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+        
+    if user.role == "admin":
+        if project_id:
+            return await models.Campaign.find(project_id=project_id).sort("-created_at").to_list()
+        return await models.Campaign.find_all().sort("-created_at").to_list()
+        
+    # Non-admin users: get their projects
+    memberships = await models.ProjectMember.find(user_id=user.id).to_list()
+    project_ids = {m.project_id for m in memberships}
+    
+    if project_id:
+        if project_id not in project_ids:
+            raise HTTPException(status_code=403, detail="You do not have access to this project.")
+        return await models.Campaign.find(project_id=project_id).sort("-created_at").to_list()
+        
+    # Return all campaigns in all projects they have access to
     all_campaigns = await models.Campaign.find_all().sort("-created_at").to_list()
-    # Return campaigns created by this user, or legacy campaigns without created_by set
-    return [c for c in all_campaigns if c.created_by == current_user_email or c.created_by is None]
+    return [c for c in all_campaigns if c.project_id in project_ids]
 
 
 @router.post("/", response_model=schemas.Campaign, status_code=201)
@@ -78,13 +111,40 @@ async def create_campaign(payload: schemas.CampaignCreate, current_user_email: s
     Create a new campaign.  If `email_config_id` is provided it is validated
     against EmailConfig collection before saving.
     """
+    user = await models.User.find_one(email=current_user_email)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    project_id = payload.project_id
+    if not project_id:
+        # Fallback to first available project
+        if user.role == "admin":
+            first_project = await models.Project.find_all().limit(1).to_list()
+            project_id = first_project[0].id if first_project else None
+        else:
+            memberships = await models.ProjectMember.find(user_id=user.id).limit(1).to_list()
+            project_id = memberships[0].project_id if memberships else None
+
+    if not project_id:
+        raise HTTPException(status_code=400, detail="No active project context found. Please create a project first.")
+
+    # Assert project access
+    if user.role != "admin":
+        member = await models.ProjectMember.find_one(user_id=user.id, project_id=project_id)
+        if not member:
+            raise HTTPException(status_code=403, detail="You do not have access to this project.")
+
     email_config_id = payload.email_config_id
     if email_config_id == "":
         email_config_id = None
 
     if email_config_id:
-        if not await models.EmailConfig.get(email_config_id):
+        config = await models.EmailConfig.get(email_config_id)
+        if not config:
             raise HTTPException(status_code=404, detail="EmailConfig not found")
+        # Assert config belongs to same project (or is globally accessible)
+        if config.project_id and config.project_id != project_id:
+            raise HTTPException(status_code=400, detail="Linked EmailConfig belongs to a different project.")
 
     timezone = getattr(payload, "timezone", "America/New_York") or "America/New_York"
     target_region = getattr(payload, "target_region", "US") or "US"
@@ -93,6 +153,15 @@ async def create_campaign(payload: schemas.CampaignCreate, current_user_email: s
     if not send_at and payload.schedule == "Daily":
         from app.scheduler import calculate_next_send_at
         send_at = calculate_next_send_at(None, payload.schedule, timezone, target_region)
+
+    # Validate all pool config IDs
+    email_config_pool = list(payload.email_config_pool or [])
+    for pool_config_id in email_config_pool:
+        pool_cfg = await models.EmailConfig.get(pool_config_id)
+        if not pool_cfg:
+            raise HTTPException(status_code=404, detail=f"EmailConfig {pool_config_id} in pool not found")
+        if pool_cfg.project_id and pool_cfg.project_id != project_id:
+            raise HTTPException(status_code=400, detail=f"Linked Pool EmailConfig {pool_config_id} belongs to a different project.")
 
     campaign = models.Campaign(
         name=payload.name,
@@ -104,6 +173,8 @@ async def create_campaign(payload: schemas.CampaignCreate, current_user_email: s
         timezone=timezone,
         target_region=target_region,
         email_config_id=email_config_id,
+        email_config_pool=email_config_pool,
+        project_id=project_id,
         status="draft",
         created_by=current_user_email,
     )
@@ -115,9 +186,30 @@ async def create_campaign(payload: schemas.CampaignCreate, current_user_email: s
 # ─── Metrics ──────────────────────────────────────────────────────────────────
 
 @router.get("/metrics", response_model=schemas.CampaignMetrics)
-async def get_metrics(current_user_email: str = Depends(get_current_user_email)):
+async def get_metrics(
+    project_id: Optional[str] = Query(None),
+    current_user_email: str = Depends(get_current_user_email)
+):
     all_campaigns = await models.Campaign.find_all().to_list()
-    allowed_campaign_ids = {str(c.id) for c in all_campaigns if c.created_by == current_user_email or c.created_by is None}
+    # Check if the user is an admin
+    user = await models.User.find_one(email=current_user_email)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+        
+    if user.role == "admin":
+        if project_id:
+            allowed_campaign_ids = {str(c.id) for c in all_campaigns if c.project_id == project_id}
+        else:
+            allowed_campaign_ids = {str(c.id) for c in all_campaigns}
+    else:
+        memberships = await models.ProjectMember.find(user_id=user.id).to_list()
+        project_ids = {m.project_id for m in memberships}
+        if project_id:
+            if project_id not in project_ids:
+                raise HTTPException(status_code=403, detail="You do not have access to this project.")
+            allowed_campaign_ids = {str(c.id) for c in all_campaigns if c.project_id == project_id and (c.created_by == current_user_email or c.created_by is None)}
+        else:
+            allowed_campaign_ids = {str(c.id) for c in all_campaigns if c.project_id in project_ids and (c.created_by == current_user_email or c.created_by is None)}
     
     all_recipients = await models.Recipient.find_all().to_list()
     # Filter recipients that belong to allowed campaigns
@@ -141,27 +233,50 @@ async def get_metrics(current_user_email: str = Depends(get_current_user_email))
 # ─── Single campaign CRUD ────────────────────────────────────────────────────
 
 @router.get("/{campaign_id}", response_model=schemas.Campaign)
-async def get_campaign(campaign_id: str):
-    return await _get_campaign_or_404(campaign_id)
+async def get_campaign(campaign_id: str, current_user_email: str = Depends(get_current_user_email)):
+    return await _assert_campaign_access(campaign_id, current_user_email)
 
 
 @router.patch("/{campaign_id}", response_model=schemas.Campaign)
-async def update_campaign(campaign_id: str, payload: schemas.CampaignUpdate):
-    campaign = await _get_campaign_or_404(campaign_id)
+async def update_campaign(campaign_id: str, payload: schemas.CampaignUpdate, current_user_email: str = Depends(get_current_user_email)):
+    campaign = await _assert_campaign_access(campaign_id, current_user_email)
+
+    if payload.project_id is not None:
+        user = await models.User.find_one(email=current_user_email)
+        if user.role != "admin":
+            member = await models.ProjectMember.find_one(user_id=user.id, project_id=payload.project_id)
+            if not member:
+                raise HTTPException(status_code=403, detail="You do not have access to the target project.")
 
     if payload.email_config_id is not None:
         if not await models.EmailConfig.get(payload.email_config_id):
             raise HTTPException(status_code=404, detail="EmailConfig not found")
 
+    # Validate pool config IDs if provided
+    if payload.email_config_pool is not None:
+        for pool_config_id in payload.email_config_pool:
+            if not await models.EmailConfig.get(pool_config_id):
+                raise HTTPException(status_code=404, detail=f"EmailConfig {pool_config_id} in pool not found")
+
     update_data = payload.model_dump(exclude_none=True)
     if update_data:
         await campaign.update({"$set": update_data})
+        if payload.status in ("active", "paused") or payload.max_contacts_per_company is not None:
+            from app.scheduler import apply_company_throttling, update_recipient_send_times
+            # Reload to get the latest values
+            campaign = await models.Campaign.get(campaign_id)
+            if campaign:
+                await apply_company_throttling(campaign_id, campaign.max_contacts_per_company or 1)
+                await update_recipient_send_times(campaign_id)
+        elif payload.send_at is not None or payload.mails_per_minute is not None:
+            from app.scheduler import update_recipient_send_times
+            await update_recipient_send_times(campaign_id)
     return campaign
 
 
 @router.delete("/{campaign_id}", status_code=204)
-async def delete_campaign(campaign_id: str):
-    campaign = await _get_campaign_or_404(campaign_id)
+async def delete_campaign(campaign_id: str, current_user_email: str = Depends(get_current_user_email)):
+    campaign = await _assert_campaign_access(campaign_id, current_user_email)
     # Purge associated recipients
     recipients = await models.Recipient.find(campaign_id=campaign_id).to_list()
     for r in recipients:
@@ -200,157 +315,15 @@ async def send_campaign(
     limit: int = Query(default=50, le=500, description="Max recipients to send in this batch"),
 ):
     """
-    Fire SMTP for all *pending* recipients of this campaign.
-    If no pending recipients are found, triggers immediate follow-ups for already *sent* recipients.
-    Requires the campaign to have an attached EmailConfig with SMTP settings.
-    Returns a summary of successes and failures.
+    Fire SMTP for all *pending* or active follow-up recipients of this campaign using the new rate-throttled queue processor.
     """
-    campaign = await _get_campaign_or_404(campaign_id)
-    config = await _get_config_for_campaign(campaign)
-
-    # 1. Fetch pending recipients first
-    recipients = (
-        await models.Recipient.find(
-            campaign_id=campaign_id,
-            status="pending",
-        )
-        .limit(limit)
-        .to_list()
-    )
-
-    is_follow_up = False
-    if not recipients:
-        # No pending recipients, check for active follow-ups that have not completed or bounced/replied
-        recipients = (
-            await models.Recipient.find(
-                campaign_id=campaign_id,
-                status="sent",
-            )
-            .limit(limit)
-            .to_list()
-        )
-        is_follow_up = True
-
-    if not recipients:
-        return {"detail": "No pending or sent recipients eligible for dispatch", "sent": 0, "failed": 0}
-
-    sent, failed = 0, 0
-    errors = []
-
-    if not is_follow_up:
-        subject = campaign.subject or f"Hi from {config.sender_name or config.sender_address}"
-        body_tpl = campaign.body_template or "Hi {name},\n\nThis message is from our campaign."
-
-        for r in recipients:
-            try:
-                await send_email(
-                    config=config,
-                    to_address=r.email,
-                    subject=subject,
-                    body=_render_body(body_tpl, r),
-                    recipient_id=str(r.id),
-                )
-                # Arm the follow-up system
-                from app.scheduler import calculate_next_follow_up
-                next_time = calculate_next_follow_up(campaign, 1)
-                max_fu = 4
-                if campaign.follow_up_templates:
-                    max_fu = max(1, len(campaign.follow_up_templates) - 1)
-                await r.update({
-                    "$set": {
-                        "status": "sent",
-                        "max_follow_ups": max_fu,
-                        "follow_up_count": 0,
-                        "next_follow_up_at": next_time
-                    }
-                })
-                sent += 1
-            except Exception as exc:
-                logger.error("Failed to send to %s: %s", r.email, exc)
-                await r.update({
-                    "$set": {
-                        "status": "bounced",
-                        "max_follow_ups": 0,
-                        "next_follow_up_at": None
-                    }
-                })
-                errors.append({"email": r.email, "error": str(exc)})
-                failed += 1
-    else:
-        # Process follow-ups immediately
-        for r in recipients:
-            if r.follow_up_count >= r.max_follow_ups:
-                continue
-            try:
-                next_count = r.follow_up_count + 1
-                subject = f"Re: {campaign.subject or 'Our outreach'}"
-                recipient_name = r.name or (f"{r.first_name} {r.last_name}" if r.first_name or r.last_name else "there")
-                
-                body = None
-                if campaign.follow_up_templates and len(campaign.follow_up_templates) > next_count:
-                    body = campaign.follow_up_templates[next_count]
-                    
-                if not body:
-                    body = (
-                        f"Hi {recipient_name},\n\n"
-                        f"I wanted to quickly follow up on my previous message. Let me know if you have a few minutes to chat next week.\n\n"
-                        f"Best,\nOutreach Team"
-                    )
-                
-                rendered_body = _render_body(body, r)
-
-                await send_email(
-                    config=config,
-                    to_address=r.email,
-                    subject=subject,
-                    body=rendered_body,
-                    recipient_id=str(r.id),
-                )
-                
-                from app.scheduler import calculate_next_follow_up
-                next_time = calculate_next_follow_up(campaign, 1)
-                
-                updates = {
-                    "follow_up_count": next_count,
-                    "next_follow_up_at": next_time
-                }
-                if next_count >= r.max_follow_ups:
-                    updates["next_follow_up_at"] = None
-
-                await r.update({
-                    "$set": updates
-                })
-                sent += 1
-            except Exception as exc:
-                logger.error("Failed sending follow-up to %s: %s", r.email, exc)
-                await r.update({
-                    "$set": {
-                        "status": "bounced",
-                        "max_follow_ups": 0,
-                        "next_follow_up_at": None
-                    }
-                })
-                errors.append({"email": r.email, "error": str(exc)})
-                failed += 1
-
-    # Reschedule send_at if it's a recurring campaign, otherwise clear it
-    updates = {}
-    if campaign.schedule in ["Daily", "Weekly", "Monthly"]:
-        from app.scheduler import calculate_next_send_at
-        current_send_at = campaign.send_at
-        if not current_send_at:
-            from datetime import datetime, timezone
-            current_send_at = datetime.now(timezone.utc).isoformat()
-        next_send_at = calculate_next_send_at(current_send_at, campaign.schedule, campaign.timezone, campaign.target_region)
-        updates["send_at"] = next_send_at
-    else:
-        updates["send_at"] = None
-
-    if sent > 0 and campaign.status == "draft":
-        updates["status"] = "active"
-    await campaign.update({"$set": updates})
-
-    return {"sent": sent, "failed": failed, "errors": errors, "type": "follow_up" if is_follow_up else "initial"}
+    from app.scheduler import process_campaign_queue
+    res = await process_campaign_queue(campaign_id, limit=limit)
+    if res.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    if res.get("status") == "already_running":
+        raise HTTPException(status_code=409, detail="Campaign is already processing a dispatch queue.")
+    return res
 
 
 # ─── IMAP inbox ───────────────────────────────────────────────────────────────
@@ -369,6 +342,7 @@ async def get_campaign_inbox(
     campaign = await _get_campaign_or_404(campaign_id)
     
     messages = []
+    error_msg = None
     
     # 1. Fetch real IMAP messages if IMAP settings are available
     if campaign.email_config_id:
@@ -378,6 +352,7 @@ async def get_campaign_inbox(
                 messages = await fetch_inbox(config, mailbox=mailbox, limit=limit)
         except Exception as e:
             logger.warning("Could not fetch actual IMAP inbox: %s", e)
+            error_msg = str(e)
             
     # 2. Query bounced recipients to generate realistic "Delivery Status Notification (Failure)" emails
     try:
@@ -416,6 +391,7 @@ async def get_campaign_inbox(
         campaign_id=campaign_id,
         mailbox=mailbox,
         messages=messages,
+        error=error_msg,
     )
 
 
@@ -434,59 +410,73 @@ async def import_campaign_leads(
     campaign = await _get_campaign_or_404(campaign_id)
     content = await file.read()
     
-    # 1. Determine format and parse
-    if file.filename.endswith(('.xls', '.xlsx')):
+    # 1. Determine format and parse (case-insensitive extensions)
+    filename_lower = file.filename.lower()
+    if filename_lower.endswith(('.xls', '.xlsx')):
         try:
             df = pd.read_excel(io.BytesIO(content))
         except Exception as e:
+            logger.exception("Failed to parse Excel file")
             raise HTTPException(status_code=400, detail=f"Failed to parse Excel file: {str(e)}")
-    elif file.filename.endswith('.csv'):
+    elif filename_lower.endswith('.csv'):
         try:
             df = pd.read_csv(io.BytesIO(content))
+        except UnicodeDecodeError:
+            try:
+                # Fallback encoding for standard Windows/Excel CSV exports
+                df = pd.read_csv(io.BytesIO(content), encoding="latin-1")
+            except Exception as e:
+                logger.exception("Failed to parse CSV file with fallback encoding")
+                raise HTTPException(status_code=400, detail=f"Failed to parse CSV file: {str(e)}")
         except Exception as e:
+            logger.exception("Failed to parse CSV file")
             raise HTTPException(status_code=400, detail=f"Failed to parse CSV file: {str(e)}")
     else:
         raise HTTPException(status_code=400, detail="Unsupported file format. Please upload an Excel (.xlsx/.xls) or CSV (.csv) file.")
     
-    # 2. Strict Header Validation (case-insensitive, stripped)
+    # 2. Extract and match headers flexibly
     original_headers = [str(c) for c in df.columns]
     normalized_headers = [c.strip().lower() for c in original_headers]
     df.columns = normalized_headers
     
-    REQUIRED_COLUMNS = [
-        "first name",
-        "last name",
-        "mail id",
-        "alternative mail id",
-        "title",
-        "department",
-        "company name",
-        "website",
-        "linkedin id",
-        "industry",
-        "state",
-        "pin code",
-        "country"
+    # Find the email column with extended alias support
+    email_col = None
+    email_aliases = [
+        "mail id", "email", "email address", "mail", "email_address", 
+        "e-mail", "e_mail", "recipient email", "recipient_email", 
+        "contact", "contacts", "lead email", "lead_email"
     ]
-    
-    missing_cols = [col for col in REQUIRED_COLUMNS if col not in normalized_headers]
-    if missing_cols:
-        missing_str = ", ".join([f"'{c}'" for c in missing_cols])
+    for possible_name in email_aliases:
+        if possible_name in normalized_headers:
+            email_col = possible_name
+            break
+            
+    if not email_col:
         raise HTTPException(
             status_code=400,
-            detail=f"Validation failed. The Excel file is missing these required headers: {missing_str}"
+            detail="Validation failed. The file must contain a 'mail id' or 'email' column."
         )
+    
+    # Helper to get column value case-insensitively with fallback aliases
+    def get_row_val(row_data, field_name: str, aliases: list = []):
+        for name in [field_name] + aliases:
+            normalized_name = name.strip().lower()
+            if normalized_name in normalized_headers:
+                val = row_data[normalized_name]
+                if pd.notna(val):
+                    return str(val).strip()
+        return None
     
     # Map normalized headers back to rows
     count = 0
     for _, row in df.iterrows():
         # Get mail ID
-        email = str(row["mail id"]).strip()
+        email = str(row[email_col]).strip()
         if not email or '@' not in email or email.lower() == 'nan':
             continue
             
-        first_name = str(row["first name"]).strip() if pd.notna(row["first name"]) else None
-        last_name = str(row["last name"]).strip() if pd.notna(row["last name"]) else None
+        first_name = get_row_val(row, "first name", ["first_name", "firstname", "first"])
+        last_name = get_row_val(row, "last name", ["last_name", "lastname", "last"])
         
         # Combine into name
         name_parts = []
@@ -494,16 +484,16 @@ async def import_campaign_leads(
         if last_name: name_parts.append(last_name)
         name = " ".join(name_parts) if name_parts else None
         
-        alt_email = str(row["alternative mail id"]).strip() if pd.notna(row["alternative mail id"]) else None
-        title = str(row["title"]).strip() if pd.notna(row["title"]) else None
-        dept = str(row["department"]).strip() if pd.notna(row["department"]) else None
-        company = str(row["company name"]).strip() if pd.notna(row["company name"]) else None
-        web = str(row["website"]).strip() if pd.notna(row["website"]) else None
-        linkedin = str(row["linkedin id"]).strip() if pd.notna(row["linkedin id"]) else None
-        ind = str(row["industry"]).strip() if pd.notna(row["industry"]) else None
-        st = str(row["state"]).strip() if pd.notna(row["state"]) else None
-        pin = str(row["pin code"]).strip() if pd.notna(row["pin code"]) else None
-        ctry = str(row["country"]).strip() if pd.notna(row["country"]) else None
+        alt_email = get_row_val(row, "alternative mail id", ["alternative_email", "alternative email", "alt email", "alt mail", "alternative mail"])
+        title = get_row_val(row, "title", ["designation", "job title", "job_title", "role"])
+        dept = get_row_val(row, "department", ["dept"])
+        company = get_row_val(row, "company name", ["company_name", "company"])
+        web = get_row_val(row, "website", ["web", "url", "site"])
+        linkedin = get_row_val(row, "linkedin id", ["linkedin", "linkedin url", "linkedin_url"])
+        ind = get_row_val(row, "industry")
+        st = get_row_val(row, "state", ["region"])
+        pin = get_row_val(row, "pin code", ["pin_code", "pincode", "zip code", "zip_code", "zip", "postal code"])
+        ctry = get_row_val(row, "country")
         
         # Region can be a combination of state/country
         region_parts = []
@@ -567,6 +557,7 @@ async def import_campaign_leads(
             count += 1
         else:
             # Update existing Recipient document with campaign details
+            new_status = "pending" if existing.status not in ("sent", "replied", "bounced") else existing.status
             await existing.update({"$set": {
                 "name": name or existing.name,
                 "first_name": first_name or existing.first_name,
@@ -582,8 +573,13 @@ async def import_campaign_leads(
                 "zip_code": pin or existing.zip_code,
                 "country": ctry or existing.country,
                 "region": region or existing.region,
-                "status": "pending"
+                "status": new_status
             }})
             count += 1
+            
+    # Run company concentration filter throttling
+    from app.scheduler import apply_company_throttling, update_recipient_send_times
+    await apply_company_throttling(campaign_id, campaign.max_contacts_per_company or 1)
+    await update_recipient_send_times(campaign_id)
             
     return {"status": "success", "rows_added": count}

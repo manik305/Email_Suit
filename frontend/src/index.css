@@ -4,31 +4,31 @@
 
 @layer base {
   body {
-    @apply bg-[#FCFAF2] text-slate-800 antialiased selection:bg-[#E6DFCF] selection:text-slate-900;
+    @apply bg-slate-50 text-slate-800 antialiased selection:bg-blue-100 selection:text-slate-900;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 }
 
 /* Premium micro-animations & glass elements */
 .cream-panel {
-  background: rgba(253, 251, 247, 0.75);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(230, 223, 207, 0.5);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(219, 234, 254, 0.8);
+  box-shadow: 0 4px 30px rgba(148, 163, 184, 0.03);
 }
 
 .cream-card {
-  background: #FCFAF5;
-  border: 1px solid rgba(220, 212, 195, 0.4);
-  box-shadow: 0 2px 12px rgba(139, 130, 110, 0.04);
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 2px 12px rgba(148, 163, 184, 0.04);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .cream-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(139, 130, 110, 0.08);
-  border-color: rgba(200, 190, 170, 0.8);
+  box-shadow: 0 8px 20px rgba(148, 163, 184, 0.08);
+  border-color: rgba(59, 130, 246, 0.4);
 }
 
 /* Custom premium scrollbar */
@@ -46,4 +46,38 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #C8BEAA;
 }
+
+/* Light corporate panels for blue/white layout */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(191, 219, 254, 0.6); /* Cool blue border */
+  box-shadow: 0 8px 32px rgba(148, 163, 184, 0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel:hover {
+  border-color: rgba(59, 130, 246, 0.45); /* Blue highlight */
+  box-shadow: 0 12px 40px rgba(148, 163, 184, 0.12);
+}
+
+/* E2E Brand Ambassador Digio Hero Sprites */
+.digio-hero-sprite {
+  background-image: url('./assets/Digio-Hero.jpeg');
+  background-size: 400% 200%; /* 4 columns, 2 rows */
+  background-repeat: no-repeat;
+  display: inline-block;
+}
+
+/* Individual Sprites: mapping the 8 poses from Digio Hero image */
+.digio-hero-welcome     { background-position: 0% 0%; }
+.digio-hero-informative { background-position: 33.333% 0%; }
+.digio-hero-excited     { background-position: 66.666% 0%; }
+.digio-hero-thinking    { background-position: 100% 0%; }
+
+.digio-hero-surprised   { background-position: 0% 100%; }
+.digio-hero-explaining  { background-position: 33.333% 100%; }
+.digio-hero-emphasizing { background-position: 66.666% 100%; }
+.digio-hero-thanks      { background-position: 100% 100%; }
 

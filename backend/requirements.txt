@@ -24,3 +24,4 @@ bcrypt
 apscheduler
 email-validator
 dnspython
+python-docx

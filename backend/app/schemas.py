@@ -6,7 +6,7 @@ from datetime import datetime
 # ─── Nested setting schemas ────────────────────────────────────────────────────
 
 class SmtpSettingsSchema(BaseModel):
-    host: str = "smtp.gmail.com"
+    host: str = "smtp-relay.gmail.com"
     port: int = 587
     username: str
     password: str
@@ -31,6 +31,8 @@ class EmailConfigCreate(BaseModel):
     smtp: SmtpSettingsSchema
     imap: Optional[ImapSettingsSchema] = None
     is_active: bool = True
+    daily_limit: int = 500
+    project_id: Optional[str] = None
 
 
 class EmailConfigUpdate(BaseModel):
@@ -41,6 +43,8 @@ class EmailConfigUpdate(BaseModel):
     smtp: Optional[SmtpSettingsSchema] = None
     imap: Optional[ImapSettingsSchema] = None
     is_active: Optional[bool] = None
+    daily_limit: Optional[int] = None
+    project_id: Optional[str] = None
 
 
 class EmailConfigOut(BaseModel):
@@ -56,6 +60,8 @@ class EmailConfigOut(BaseModel):
     smtp_port: Optional[int] = None
     imap_host: Optional[str] = None
     imap_port: Optional[int] = None
+    daily_limit: int = 500
+    project_id: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
@@ -97,6 +103,7 @@ class Recipient(RecipientBase):
     clicked_at: Optional[datetime] = None
     open_count: int = 0
     click_count: int = 0
+    send_at: Optional[datetime] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
@@ -121,6 +128,18 @@ class CampaignBase(BaseModel):
     timezone: Optional[str] = "America/New_York"
     target_region: Optional[str] = "US"
     created_by: Optional[str] = None
+    mails_per_minute: Optional[int] = 2
+    daily_fresh_limit: Optional[int] = 100
+    max_contacts_per_company: Optional[int] = 1
+    consecutive_failures: Optional[int] = 0
+    diagnostic_error: Optional[str] = None
+    email_config_pool: Optional[List[str]] = []
+    project_id: Optional[str] = None
+    icp_titles: Optional[List[str]] = None
+    icp_departments: Optional[List[str]] = None
+    icp_industries: Optional[List[str]] = None
+    icp_regions: Optional[List[str]] = None
+    icp_active: Optional[bool] = False
 
 
 class CampaignCreate(CampaignBase):
@@ -144,6 +163,18 @@ class CampaignUpdate(BaseModel):
     email_config_id: Optional[str] = None
     target_region: Optional[str] = None
     created_by: Optional[str] = None
+    mails_per_minute: Optional[int] = None
+    daily_fresh_limit: Optional[int] = None
+    max_contacts_per_company: Optional[int] = None
+    consecutive_failures: Optional[int] = None
+    diagnostic_error: Optional[str] = None
+    email_config_pool: Optional[List[str]] = None
+    project_id: Optional[str] = None
+    icp_titles: Optional[List[str]] = None
+    icp_departments: Optional[List[str]] = None
+    icp_industries: Optional[List[str]] = None
+    icp_regions: Optional[List[str]] = None
+    icp_active: Optional[bool] = None
 
 
 
@@ -151,6 +182,7 @@ class Campaign(CampaignBase):
     id: str
     status: str
     email_config_id: Optional[str] = None
+    project_id: Optional[str] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
@@ -182,3 +214,54 @@ class InboxResponse(BaseModel):
     campaign_id: str
     mailbox: str
     messages: List[InboxMessage]
+    error: Optional[str] = None
+
+
+class RecipientPreviewResponse(BaseModel):
+    recipient_id: str
+    subject: str
+    body: str
+
+
+# ─── Project Schemas ──────────────────────────────────────────────────────────
+
+class ProjectCreate(BaseModel):
+    name: str
+
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+
+
+class ProjectOut(BaseModel):
+    id: str
+    name: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
+
+    @field_validator('id', mode='before')
+    @classmethod
+    def coerce_object_id(cls, v):
+        return str(v)
+
+
+class ProjectMemberAdd(BaseModel):
+    email: str
+    role: str = "member"  # "manager" | "member"
+
+
+class ProjectMemberOut(BaseModel):
+    id: str
+    user_id: str
+    user_email: Optional[str] = None
+    project_id: str
+    role: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
+
+    @field_validator('id', mode='before')
+    @classmethod
+    def coerce_object_id(cls, v):
+        return str(v)

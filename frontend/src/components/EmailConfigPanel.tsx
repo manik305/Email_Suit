@@ -32,6 +32,7 @@ interface Props {
   campaignId: string;
   linkedConfigId?: string;
   onLinked: (configId: string) => void;
+  projectId?: string;
 }
 
 interface ConfigForm {
@@ -60,7 +61,7 @@ const blank = (): ConfigForm => ({
   imapUser: '', imapPass: '',
 });
 
-const EmailConfigPanel: React.FC<Props> = ({ campaignId, linkedConfigId, onLinked }) => {
+const EmailConfigPanel: React.FC<Props> = ({ campaignId, linkedConfigId, onLinked, projectId }) => {
   const [configs, setConfigs]       = useState<EmailConfigSummary[]>([]);
   const [showForm, setShowForm]     = useState(false);
   const [editId, setEditId]         = useState<string | null>(null);
@@ -74,12 +75,13 @@ const EmailConfigPanel: React.FC<Props> = ({ campaignId, linkedConfigId, onLinke
 
   const loadConfigs = async () => {
     try {
-      const r = await fetch(`${API_BASE_URL}/config/`);
+      const url = projectId ? `${API_BASE_URL}/config/?project_id=${projectId}` : `${API_BASE_URL}/config/`;
+      const r = await fetch(url);
       if (r.ok) setConfigs(await r.json());
     } catch { /* silent */ }
   };
 
-  useEffect(() => { loadConfigs(); }, []);
+  useEffect(() => { loadConfigs(); }, [projectId]);
 
   // ── Apply provider preset ──
   const applyPreset = (provider: string) => {
@@ -119,6 +121,7 @@ const EmailConfigPanel: React.FC<Props> = ({ campaignId, linkedConfigId, onLinke
         use_ssl: true,
       } : undefined,
       is_active: true,
+      project_id: projectId || undefined,
     };
 
     try {
@@ -140,18 +143,41 @@ const EmailConfigPanel: React.FC<Props> = ({ campaignId, linkedConfigId, onLinke
     setSaving(false);
   };
 
-  // ── Test SMTP ──────────────────────────────────────────────────────────────
+  // ── Test Connection (SMTP & IMAP) ──────────────────────────────────────────
   const handleTest = async () => {
     setTesting(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/config/test-smtp`, {
+      const res = await fetch(`${API_BASE_URL}/config/test-connection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: form.smtpHost, port: form.smtpPort, username: form.smtpUser, password: form.smtpPass, use_tls: form.smtpTls }),
+        body: JSON.stringify({
+          smtp_host: form.smtpHost,
+          smtp_port: form.smtpPort,
+          smtp_username: form.smtpUser,
+          smtp_password: form.smtpPass,
+          smtp_use_tls: form.smtpTls,
+          enable_imap: form.enableImap,
+          imap_host: form.imapHost,
+          imap_port: form.imapPort,
+          imap_username: form.imapUser || form.smtpUser,
+          imap_password: form.imapPass || form.smtpPass,
+          imap_use_ssl: true,
+        }),
       });
       const d = await res.json();
-      showToast(d.success ? '✅ SMTP connection OK!' : `❌ SMTP failed: ${d.detail}`);
-    } catch { showToast('❌ SMTP test network error.'); }
+      if (d.success) {
+        showToast('✅ SMTP & IMAP connections successfully verified!');
+      } else {
+        let msg = '';
+        if (d.smtp && !d.smtp.success) {
+          msg += `❌ SMTP failed: ${d.smtp.error}. `;
+        }
+        if (d.imap && !d.imap.success) {
+          msg += `❌ IMAP failed: ${d.imap.error}.`;
+        }
+        showToast(msg || '❌ Connection test failed.');
+      }
+    } catch { showToast('❌ Connection test network error.'); }
     setTesting(false);
   };
 
@@ -321,7 +347,7 @@ const EmailConfigPanel: React.FC<Props> = ({ campaignId, linkedConfigId, onLinke
             </div>
             <button type="button" onClick={handleTest} disabled={testing || !form.smtpHost || !form.smtpUser || !form.smtpPass}
               className="w-full py-2 text-xs font-bold bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl transition-all disabled:opacity-40 flex items-center justify-center gap-2">
-              {testing ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Testing…</> : '🔌 Test SMTP Connection'}
+              {testing ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Testing…</> : '🔌 Test SMTP & IMAP Connection'}
             </button>
           </div>
 

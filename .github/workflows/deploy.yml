@@ -1,62 +1,89 @@
-name: Deploy to Azure
+name: CI/CD - Deploy to AWS ECR and EC2
 
 on:
   push:
     branches:
       - main
-      - Main
-
-permissions:
-  id-token: write
-  contents: read
 
 env:
-  AZURE_CONTAINER_REGISTRY: "emailsasregistry" # Replace with your ACR name
-  BACKEND_IMAGE_NAME: "emailsas-backend"
-  FRONTEND_IMAGE_NAME: "emailsas-frontend"
-  AZURE_BACKEND_APP_NAME: "emailsas-backend-app" # Replace with Azure App Service name for Backend
-  AZURE_FRONTEND_APP_NAME: "emailsas-frontend-app" # Replace with Azure App Service name for Frontend
+  AWS_REGION: us-east-1
+  ECR_BACKEND_REP: emailsaas-backend
+  ECR_FRONTEND_REP: emailsaas-frontend
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Source Code
+      # 1. Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Log in to Azure
-        uses: azure/login@v2
+      # 2. Configure AWS Credentials
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Log in to Azure Container Registry
+      # 3. Log in to Amazon ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # 4. Build, Tag, and Push Backend Image
+      - name: Build and Push Backend Docker Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: latest
         run: |
-          az acr login --name ${{ env.AZURE_CONTAINER_REGISTRY }}
+          docker build -t $ECR_REGISTRY/${{ env.ECR_BACKEND_REP }}:$IMAGE_TAG -f backend/Dockerfile backend
+          docker push $ECR_REGISTRY/${{ env.ECR_BACKEND_REP }}:$IMAGE_TAG
 
-      # --- Backend Build & Deploy ---
-      - name: Build and Push Backend Image
+      # 5. Build, Tag, and Push Frontend Image
+      - name: Build and Push Frontend Docker Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: latest
         run: |
-          docker build -t ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.BACKEND_IMAGE_NAME }}:${{ github.sha }} -f backend/Dockerfile backend
-          docker tag ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.BACKEND_IMAGE_NAME }}:${{ github.sha }} ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.BACKEND_IMAGE_NAME }}:latest
-          docker push ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.BACKEND_IMAGE_NAME }}:${{ github.sha }}
-          docker push ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.BACKEND_IMAGE_NAME }}:latest
+          # Write production base URL before building React bundle
+          echo "VITE_API_BASE_URL=http://${{ secrets.EC2_PUBLIC_IP }}:8000/api/v1" > frontend/.env.production
+          docker build -t $ECR_REGISTRY/${{ env.ECR_FRONTEND_REP }}:$IMAGE_TAG -f frontend/Dockerfile frontend
+          docker push $ECR_REGISTRY/${{ env.ECR_FRONTEND_REP }}:$IMAGE_TAG
 
-      - name: Deploy Backend to Azure App Service
-        uses: azure/webapps-deploy@v3
+      # 6. Deploy to EC2 via SSH
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          app-name: ${{ env.AZURE_BACKEND_APP_NAME }}
-          images: ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.BACKEND_IMAGE_NAME }}:${{ github.sha }}
+          host: ${{ secrets.EC2_PUBLIC_IP }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: ECR_REGISTRY,AWS_REGION
+          script: |
+            # Login to ECR on remote EC2 instance
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
 
-      # --- Frontend Build & Deploy ---
-      - name: Build and Push Frontend Image
-        run: |
-          docker build -t ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE_NAME }}:${{ github.sha }} -f frontend/Dockerfile frontend
-          docker tag ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE_NAME }}:${{ github.sha }} ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE_NAME }}:latest
-          docker push ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE_NAME }}:${{ github.sha }}
-          docker push ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE_NAME }}:latest
+            # Stop existing containers if running
+            docker stop backend frontend || true
+            docker rm backend frontend || true
 
-      - name: Deploy Frontend to Azure App Service
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.AZURE_FRONTEND_APP_NAME }}
-          images: ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE_NAME }}:${{ github.sha }}
+            # Pull latest ECR images
+            docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REP }}:latest
+            docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REP }}:latest
+
+            # Run Backend container (bonded to Supabase, JWT Secret, and OpenAI)
+            docker run -d \
+              --name backend \
+              --restart always \
+              -p 8000:8000 \
+              -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+              -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+              -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REP }}:latest
+
+            # Run Frontend container
+            docker run -d \
+              --name frontend \
+              --restart always \
+              -p 80:80 \
+              ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REP }}:latest

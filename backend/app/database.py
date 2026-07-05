@@ -21,18 +21,18 @@ async def init_db() -> None:
     """Initialize the PostgreSQL connection pool and execute schema if not initialized."""
     global db_pool
     try:
-        # Configure keepalives to prevent silent idle disconnects by firewalls/Supabase AWS load balancer
+        # Use Transaction Mode pooler (port 6543) with no persistent idle connections.
+        # max_inactive_connection_lifetime evicts stale connections before Supabase
+        # silently drops them (~300s idle timeout on their load balancer).
+        # statement_cache_size=0 is REQUIRED for pgbouncer/Supabase Transaction Mode
+        # (prepared statements are not supported in transaction pooling mode).
         db_pool = await asyncpg.create_pool(
             DATABASE_URL,
-            min_size=2,
+            min_size=1,
             max_size=10,
-            command_timeout=60,
-            server_settings={
-                "keepalives": "1",
-                "keepalives_idle": "30",
-                "keepalives_interval": "10",
-                "keepalives_count": "5"
-            }
+            command_timeout=30,
+            max_inactive_connection_lifetime=60,  # evict idle connections after 60s
+            statement_cache_size=0,               # required for pgbouncer transaction mode
         )
         logger.info("✅ Connected to Supabase PostgreSQL database.")
         
@@ -92,10 +92,16 @@ async def init_db() -> None:
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS target_region VARCHAR(100) DEFAULT 'US' NOT NULL;
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_templates JSONB;
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS created_by VARCHAR(255);
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS mails_per_minute INTEGER DEFAULT 2;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS daily_fresh_limit INTEGER DEFAULT 100;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS max_contacts_per_company INTEGER DEFAULT 1;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS consecutive_failures INTEGER DEFAULT 0;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS diagnostic_error TEXT;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS clicked_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS open_count INTEGER DEFAULT 0 NOT NULL;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS click_count INTEGER DEFAULT 0 NOT NULL;
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS send_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS sender_email VARCHAR(255);
                     CREATE TABLE IF NOT EXISTS public.recipient_events (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -106,7 +112,60 @@ async def init_db() -> None:
                         user_agent TEXT,
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
                     );
+                    ALTER TABLE public.email_configs ADD COLUMN IF NOT EXISTS daily_limit INTEGER DEFAULT 500 NOT NULL;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS email_config_pool JSONB DEFAULT '[]';
+                    CREATE TABLE IF NOT EXISTS public.email_config_daily_quota (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        email_config_id UUID REFERENCES public.email_configs(id) ON DELETE CASCADE,
+                        quota_date DATE NOT NULL,
+                        emails_sent INTEGER DEFAULT 0 NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+                        UNIQUE(email_config_id, quota_date)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_quota_config_date ON public.email_config_daily_quota(email_config_id, quota_date);
+
+                    -- Project-Level Management Migration
+                    CREATE TABLE IF NOT EXISTS public.projects (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        name VARCHAR(255) NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS public.project_members (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+                        project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
+                        role VARCHAR(50) DEFAULT 'member' NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+                        UNIQUE(user_id, project_id)
+                    );
+                    ALTER TABLE public.email_configs ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL;
+                    ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_titles JSONB DEFAULT '[]';
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_departments JSONB DEFAULT '[]';
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_industries JSONB DEFAULT '[]';
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_regions JSONB DEFAULT '[]';
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_active BOOLEAN DEFAULT FALSE;
                 """)
+
+                # Ensure default project exists for legacy compatibility
+                default_project_id = await conn.fetchval("SELECT id FROM public.projects LIMIT 1")
+                if not default_project_id:
+                    default_project_id = await conn.fetchval(
+                        "INSERT INTO public.projects (name) VALUES ($1) RETURNING id",
+                        "Default Project"
+                    )
+                await conn.execute("UPDATE public.campaigns SET project_id = $1 WHERE project_id IS NULL", default_project_id)
+                await conn.execute("UPDATE public.email_configs SET project_id = $1 WHERE project_id IS NULL", default_project_id)
+                await conn.execute("UPDATE public.meetings SET project_id = $1 WHERE project_id IS NULL", default_project_id)
+
+                # Grant all existing users access to the default project
+                all_user_ids = await conn.fetch("SELECT id FROM public.profiles")
+                for u in all_user_ids:
+                    await conn.execute(
+                        "INSERT INTO public.project_members (user_id, project_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                        u["id"], default_project_id, "manager"
+                    )
                 logger.info("✅ Database schema initialized and legacy tables dropped successfully.")
         
         # Auto-seed database with demo data if empty
@@ -122,9 +181,21 @@ async def init_db() -> None:
                     "INSERT INTO public.profiles (email, hashed_password, role, is_verified) VALUES ($1, $2, $3, $4) RETURNING id",
                     "architect@emailsaas.com", hashed_pwd, "admin", True
                 )
+
+                # Create seed project
+                project_id = await conn.fetchval(
+                    "INSERT INTO public.projects (name) VALUES ($1) RETURNING id",
+                    "Default Outreach Project"
+                )
+
+                # Link user as project manager
+                await conn.execute(
+                    "INSERT INTO public.project_members (user_id, project_id, role) VALUES ($1, $2, $3)",
+                    user_id, project_id, "manager"
+                )
                 
                 # Read SMTP & IMAP values from environment (or defaults)
-                env_smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+                env_smtp_host = os.getenv("SMTP_HOST", "smtp-relay.gmail.com")
                 env_smtp_port = int(os.getenv("SMTP_PORT", "587"))
                 env_smtp_user = os.getenv("SMTP_USERNAME", "outreach@digioclick.com")
                 env_smtp_pass = os.getenv("SMTP_PASSWORD", "app-password-placeholder")
@@ -136,33 +207,33 @@ async def init_db() -> None:
                 env_imap_pass = os.getenv("IMAP_PASSWORD", "app-password-placeholder")
                 env_imap_ssl = os.getenv("IMAP_USE_SSL", "True").lower() in ("true", "1", "yes")
 
-                # Insert mock email config
+                # Insert mock email config linked to project
                 config_id = await conn.fetchval(
                     """
                     INSERT INTO public.email_configs 
                     (name, provider, sender_address, sender_name, smtp_host, smtp_port, smtp_username, smtp_password, smtp_use_tls,
-                     imap_host, imap_port, imap_username, imap_password, imap_use_ssl, is_active)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                     imap_host, imap_port, imap_username, imap_password, imap_use_ssl, is_active, project_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                     RETURNING id
                     """,
                     "Default Outbound SMTP", "smtp", env_smtp_user, "Outreach Manager",
                     env_smtp_host, env_smtp_port, env_smtp_user, env_smtp_pass, env_smtp_tls,
                     env_imap_host, env_imap_port, env_imap_user, env_imap_pass, env_imap_ssl,
-                    True
+                    True, project_id
                 )
                 
-                # Insert mock campaign
+                # Insert mock campaign linked to project
                 campaign_id = await conn.fetchval(
                     """
                     INSERT INTO public.campaigns
-                    (name, target_segment, schedule, status, email_config_id, subject, body_template, timezone)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    (name, target_segment, schedule, status, email_config_id, subject, body_template, timezone, project_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     RETURNING id
                     """,
                     "Digio Click Outbound Launch", "Tech Startups", "Once", "draft", config_id,
                     "Grow your outreach with Digio Click CRM 🚀",
                     "Hi {name},\n\nWe noticed {company_name} is growing rapidly. Are you looking to scale your cold outreach?\n\nBest,\nOutreach Team",
-                    "America/New_York"
+                    "America/New_York", project_id
                 )
                 
                 # Insert mock recipients

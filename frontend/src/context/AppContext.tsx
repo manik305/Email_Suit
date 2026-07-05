@@ -45,6 +45,17 @@ export interface Campaign {
   email_config_id?: string;
   timezone?: string;
   target_region?: string;
+  mails_per_minute?: number;
+  daily_fresh_limit?: number;
+  max_contacts_per_company?: number;
+  consecutive_failures?: number;
+  diagnostic_error?: string;
+  project_id?: string;
+  icp_titles?: string[];
+  icp_departments?: string[];
+  icp_industries?: string[];
+  icp_regions?: string[];
+  icp_active?: boolean;
   created_at: string;
 }
 
@@ -59,6 +70,7 @@ export interface EmailConfigSummary {
   smtp_port?: number;
   imap_host?: string;
   imap_port?: number;
+  project_id?: string;
   created_at: string;
 }
 
@@ -96,6 +108,10 @@ export interface CreateCampaignPayload {
   send_at?: string;
   email_config_id?: string;
   target_region?: string;
+  timezone?: string;
+  mails_per_minute?: number;
+  daily_fresh_limit?: number;
+  max_contacts_per_company?: number;
 }
 
 interface AppContextType {
@@ -142,15 +158,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
 
   const refreshData = useCallback(async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      setState(prev => ({ ...prev, isLoading: false }));
+      return;
+    }
     setState(prev => ({ ...prev, isLoading: true }));
     try {
       const authHeaders = getAuthHeaders();
+      const storedPid = localStorage.getItem('selected_project_id') || '';
+      const metricsUrl = storedPid ? `${API_BASE_URL}/campaigns/metrics?project_id=${storedPid}` : `${API_BASE_URL}/campaigns/metrics`;
+      const recipientsUrl = storedPid ? `${API_BASE_URL}/data/recipients?project_id=${storedPid}` : `${API_BASE_URL}/data/recipients`;
+      const campaignsUrl = storedPid ? `${API_BASE_URL}/campaigns/?project_id=${storedPid}` : `${API_BASE_URL}/campaigns/`;
+      const configsUrl = storedPid ? `${API_BASE_URL}/config/?project_id=${storedPid}` : `${API_BASE_URL}/config/`;
+      
       const [metricsRes, recipientsRes, campaignsRes, configsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/campaigns/metrics`, { headers: authHeaders }),
-        fetch(`${API_BASE_URL}/data/recipients`, { headers: authHeaders }),
-        fetch(`${API_BASE_URL}/campaigns/`, { headers: authHeaders }),
-        fetch(`${API_BASE_URL}/config/`, { headers: authHeaders }),
+        fetch(metricsUrl, { headers: authHeaders }),
+        fetch(recipientsUrl, { headers: authHeaders }),
+        fetch(campaignsUrl, { headers: authHeaders }),
+        fetch(configsUrl, { headers: authHeaders }),
       ]);
+
+      if (metricsRes.status === 401 || recipientsRes.status === 401 || campaignsRes.status === 401 || configsRes.status === 401) {
+        console.warn('⚠️ Token expired or invalid. Logging out.');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('auth_level');
+        localStorage.removeItem('user_email');
+        localStorage.removeItem('last_activity');
+        window.location.href = '/';
+        return;
+      }
 
       const metrics: AppState['metrics']           = await metricsRes.json();
       const recipients: Recipient[]                 = await recipientsRes.json();
