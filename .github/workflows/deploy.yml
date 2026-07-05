@@ -3,7 +3,7 @@ name: CI/CD - Deploy to AWS ECR and EC2
 on:
   push:
     branches:
-      - main
+      - Main
 
 env:
   AWS_REGION: us-east-1
@@ -79,6 +79,11 @@ jobs:
               -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
               -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
               -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              -e SMTP_HOST="${{ secrets.SMTP_HOST }}" \
+              -e SMTP_PORT="${{ secrets.SMTP_PORT }}" \
+              -e SMTP_USERNAME="${{ secrets.SMTP_USERNAME }}" \
+              -e SMTP_PASSWORD="${{ secrets.SMTP_PASSWORD }}" \
+              -e SMTP_USE_TLS="${{ secrets.SMTP_USE_TLS }}" \
               ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REP }}:latest
 
             # Run Frontend container
