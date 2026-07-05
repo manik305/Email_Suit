@@ -4,7 +4,7 @@ import digioClickLogo from '../assets/Digio-click-logo.jpeg';
 import { Mascot3D, MascotState } from '../components/Mascot3D';
 
 const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.');
-const API_BASE_URL = isLocalDev ? 'http://localhost:8000/api/v1' : '/api/v1';
+const API_BASE_URL = isLocalDev ? 'http://localhost:8000/api/v1' : (import.meta.env.VITE_API_BASE_URL || '/api/v1');
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();

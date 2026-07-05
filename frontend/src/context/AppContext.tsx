@@ -126,7 +126,7 @@ interface AppContextType {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.');
-export const API_BASE_URL = isLocalDev ? 'http://localhost:8000/api/v1' : '/api/v1';
+export const API_BASE_URL = isLocalDev ? 'http://localhost:8000/api/v1' : (import.meta.env.VITE_API_BASE_URL || '/api/v1');
 
 const initialState: AppState = {
   metrics: {
