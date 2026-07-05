@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import digioClickLogo from '../assets/Digio-click-logo.jpeg';
 
-const isLocalDev = window.location.port === '5173' || window.location.port === '5174';
+const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.');
 const API_BASE_URL = isLocalDev ? 'http://localhost:8000/api/v1' : '/api/v1';
 
 interface Project {
