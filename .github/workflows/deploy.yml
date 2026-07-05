@@ -46,9 +46,10 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: latest
         run: |
-          # Write production base URL before building React bundle
-          echo "VITE_API_BASE_URL=http://${{ secrets.EC2_PUBLIC_IP }}:8000/api/v1" > frontend/.env.production
-          docker build -t $ECR_REGISTRY/${{ env.ECR_FRONTEND_REP }}:$IMAGE_TAG -f frontend/Dockerfile frontend
+          docker build \
+            --build-arg VITE_API_BASE_URL="http://${{ secrets.EC2_PUBLIC_IP }}:8000/api/v1" \
+            -t $ECR_REGISTRY/${{ env.ECR_FRONTEND_REP }}:$IMAGE_TAG \
+            -f frontend/Dockerfile frontend
           docker push $ECR_REGISTRY/${{ env.ECR_FRONTEND_REP }}:$IMAGE_TAG
 
       # 6. Deploy to EC2 via SSH
