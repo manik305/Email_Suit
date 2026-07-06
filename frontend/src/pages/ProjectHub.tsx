@@ -37,12 +37,13 @@ const ProjectHubPage: React.FC = () => {
   const [memberEmailInputs, setMemberEmailInputs] = useState<Record<string, string>>({});
   const [memberRoleInputs, setMemberRoleInputs] = useState<Record<string, string>>({});
 
-  // Strict route guard: only admins/super admins can access this page
+  // Guard: Redirect to login if token is missing
   useEffect(() => {
-    if (authLevel !== 'admin') {
-      navigate('/dashboard');
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      navigate('/');
     }
-  }, [authLevel, navigate]);
+  }, [navigate]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -91,10 +92,11 @@ const ProjectHubPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (authLevel === 'admin') {
+    const token = localStorage.getItem('access_token');
+    if (token) {
       fetchProjectsAndMembers();
     }
-  }, [authLevel]);
+  }, []);
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,8 +241,8 @@ const ProjectHubPage: React.FC = () => {
 
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
-        {/* LEFT COLUMN: PROJECTS GRID (lg:col-span-8) */}
-        <div className="lg:col-span-8 space-y-6">
+        {/* LEFT COLUMN: PROJECTS GRID */}
+        <div className={`${authLevel === 'admin' ? 'lg:col-span-8' : 'lg:col-span-12'} space-y-6`}>
           {loading ? (
             <div className="text-center p-16 bg-white rounded-3xl border border-slate-200 shadow-sm text-slate-500 font-semibold text-sm">
               Loading active workspaces...
@@ -294,13 +296,15 @@ const ProjectHubPage: React.FC = () => {
                                     {m.role}
                                   </span>
                                 </div>
-                                <button
-                                  onClick={() => handleRemoveMember(p.id, m.user_id, m.user_email || 'Unknown')}
-                                  className="text-rose-500 hover:text-rose-700 p-1 hover:bg-rose-50 rounded"
-                                  title="Revoke access"
-                                >
-                                  ✕
-                                </button>
+                                {authLevel === 'admin' && (
+                                  <button
+                                    onClick={() => handleRemoveMember(p.id, m.user_id, m.user_email || 'Unknown')}
+                                    className="text-rose-500 hover:text-rose-700 p-1 hover:bg-rose-50 rounded"
+                                    title="Revoke access"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
                               </div>
                             ))
                           )}
@@ -312,29 +316,31 @@ const ProjectHubPage: React.FC = () => {
                     <div className="space-y-3 pt-3 border-t border-slate-100">
                       
                       {/* Inline Grant Access form */}
-                      <div className="flex gap-1.5">
-                        <input
-                          type="email"
-                          placeholder="Team member work email"
-                          value={memberEmailInputs[p.id] || ''}
-                          onChange={(e) => setMemberEmailInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
-                          className="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#4BA7C9]"
-                        />
-                        <select
-                          value={memberRoleInputs[p.id] || 'member'}
-                          onChange={(e) => setMemberRoleInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
-                          className="bg-white border border-slate-200 rounded-lg px-1 text-[10px] font-semibold text-slate-600 focus:outline-none"
-                        >
-                          <option value="member">Member</option>
-                          <option value="manager">Manager</option>
-                        </select>
-                        <button
-                          onClick={() => handleAddMember(p.id)}
-                          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg text-[10px] transition"
-                        >
-                          Grant
-                        </button>
-                      </div>
+                      {authLevel === 'admin' && (
+                        <div className="flex gap-1.5">
+                          <input
+                            type="email"
+                            placeholder="Team member work email"
+                            value={memberEmailInputs[p.id] || ''}
+                            onChange={(e) => setMemberEmailInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
+                            className="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#4BA7C9]"
+                          />
+                          <select
+                            value={memberRoleInputs[p.id] || 'member'}
+                            onChange={(e) => setMemberRoleInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
+                            className="bg-white border border-slate-200 rounded-lg px-1 text-[10px] font-semibold text-slate-600 focus:outline-none"
+                          >
+                            <option value="member">Member</option>
+                            <option value="manager">Manager</option>
+                          </select>
+                          <button
+                            onClick={() => handleAddMember(p.id)}
+                            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg text-[10px] transition"
+                          >
+                            Grant
+                          </button>
+                        </div>
+                      )}
 
                       {/* Enter workspace button */}
                       <button
@@ -352,42 +358,44 @@ const ProjectHubPage: React.FC = () => {
           )}
         </div>
 
-        {/* RIGHT COLUMN: PROJECT BUILDER (lg:col-span-4) */}
-        <div className="lg:col-span-4">
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">📁</span>
-              <h3 className="text-base font-bold text-slate-800">Workspace Builder</h3>
-            </div>
-            
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Create a new client or business campaign project boundary. This scopes SMTP relays, contact lists, and scheduled sequences separately.
-            </p>
-
-            <form onSubmit={handleCreateProject} className="space-y-4 pt-2">
-              <div className="space-y-1 text-xs">
-                <label htmlFor="projectName" className="block font-bold text-slate-500 uppercase tracking-wider">Project Name *</label>
-                <input
-                  required
-                  id="projectName"
-                  type="text"
-                  placeholder="e.g. EU outreach segment"
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#4BA7C9] focus:border-[#4BA7C9]"
-                />
+        {/* RIGHT COLUMN: PROJECT BUILDER */}
+        {authLevel === 'admin' && (
+          <div className="lg:col-span-4">
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-5">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📁</span>
+                <h3 className="text-base font-bold text-slate-800">Workspace Builder</h3>
               </div>
+              
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Create a new client or business campaign project boundary. This scopes SMTP relays, contact lists, and scheduled sequences separately.
+              </p>
 
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full py-2.5 bg-slate-850 hover:bg-slate-750 text-white font-bold rounded-xl text-xs transition shadow-sm bg-slate-800 hover:bg-slate-700 disabled:opacity-50"
-              >
-                {submitting ? 'Creating Workspace...' : 'Create Project Workspace'}
-              </button>
-            </form>
+              <form onSubmit={handleCreateProject} className="space-y-4 pt-2">
+                <div className="space-y-1 text-xs">
+                  <label htmlFor="projectName" className="block font-bold text-slate-500 uppercase tracking-wider">Project Name *</label>
+                  <input
+                    required
+                    id="projectName"
+                    type="text"
+                    placeholder="e.g. EU outreach segment"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#4BA7C9] focus:border-[#4BA7C9]"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full py-2.5 bg-slate-850 hover:bg-slate-750 text-white font-bold rounded-xl text-xs transition shadow-sm bg-slate-800 hover:bg-slate-700 disabled:opacity-50"
+                >
+                  {submitting ? 'Creating Workspace...' : 'Create Project Workspace'}
+                </button>
+              </form>
+            </div>
           </div>
-        </div>
+        )}
 
       </div>
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import mascotImg from '../assets/Digio_Her.jpeg';
+import mascotImg from '../assets/Digio_Her.png';
 
 export type MascotState = 'welcome' | 'running' | 'sleeping' | 'touching' | 'loading';
 
@@ -14,57 +14,11 @@ export const Mascot3D: React.FC<Mascot3DProps> = ({
   className = '',
   size = 280,
 }) => {
-  const [processedSrc, setProcessedSrc] = useState<string | null>(null);
-  const [imgLoaded, setImgLoaded] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const [rotateX, setRotateX] = useState(0);
   const [rotateY, setRotateY] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
-
-  // Dynamic Background Removal (Black to transparent alpha)
-  useEffect(() => {
-    const img = new Image();
-    img.src = mascotImg;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      ctx.drawImage(img, 0, 0);
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imgData.data;
-
-      // Filter black background (RGB below threshold)
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-
-        // If pixel is black/very dark
-        if (r < 35 && g < 35 && b < 35) {
-          data[i + 3] = 0; // set alpha transparent
-        } else {
-          // Boost glowing elements slightly (blue and orange parts)
-          // Orange parts
-          if (r > 200 && g > 100 && b < 100) {
-            data[i] = Math.min(255, r * 1.1);
-            data[i+1] = Math.min(255, g * 1.1);
-          }
-          // Blue parts
-          if (b > 180 && r < 120) {
-            data[i+2] = Math.min(255, b * 1.15);
-            data[i] = Math.min(255, r * 0.9);
-          }
-        }
-      }
-
-      ctx.putImageData(imgData, 0, 0);
-      setProcessedSrc(canvas.toDataURL('image/png'));
-      setImgLoaded(true);
-    };
-  }, []);
 
   // 3D Parallax Mouse Tracking
   useEffect(() => {
@@ -337,23 +291,19 @@ export const Mascot3D: React.FC<Mascot3DProps> = ({
             ...getMascotAnimationStyle(),
           }}
         >
-          {processedSrc ? (
-            <img
-              src={processedSrc}
-              alt="Digio Hero Mascot 3D"
-              className="w-full h-full object-contain pointer-events-none select-none transition-opacity duration-300"
-              style={{
-                // Prevent ghost outline or pixelated corners
-                imageRendering: 'auto',
-              }}
-            />
-          ) : (
-            // Spinner fallback while processing canvas
-            <div className="w-16 h-16 border-2 border-slate-200 border-t-sky-400 rounded-full animate-spin" />
-          )}
+          <img
+            src={mascotImg}
+            alt="Digio Hero Mascot 3D"
+            fetchpriority="high"
+            loading="eager"
+            className="w-full h-full object-contain pointer-events-none select-none transition-opacity duration-300"
+            style={{
+              imageRendering: 'auto',
+            }}
+          />
 
           {/* Holographic scanner line for Loading state */}
-          {state === 'loading' && processedSrc && (
+          {state === 'loading' && (
             <div
               className="absolute left-0 right-0 h-[2px] bg-sky-400/80 shadow-[0_0_12px_rgba(56,189,248,0.8)] opacity-70 pointer-events-none"
               style={{
