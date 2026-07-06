@@ -294,7 +294,6 @@ export const Mascot3D: React.FC<Mascot3DProps> = ({
           <img
             src={mascotImg}
             alt="Digio Hero Mascot 3D"
-            fetchPriority="high"
             loading="eager"
             className="w-full h-full object-contain pointer-events-none select-none transition-opacity duration-300"
             style={{
