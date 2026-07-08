@@ -10,6 +10,8 @@ import ProjectHubPage from './pages/ProjectHub';
 import { Chatbot } from './components/Chatbot';
 import { useAppContext, API_BASE_URL } from './context/AppContext';
 import { Mascot3D } from './components/Mascot3D';
+import { ProfileDropdown } from './components/ProfileDropdown';
+
 
 const navIcons: Record<string, React.ReactNode> = {
   '/dashboard': (
@@ -187,9 +189,21 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </aside>
 
       {/* Main content area */}
-      <main className="flex-1 relative overflow-y-auto bg-slate-50/30 pt-14 md:pt-0">
+      <main className="flex-1 relative overflow-y-auto bg-slate-50/30 pt-14 md:pt-0 flex flex-col">
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/30 via-transparent to-transparent"></div>
-        <div className="p-4 md:p-8 relative z-10 cream-panel min-h-[calc(100vh-4rem)] m-2 md:m-6 rounded-2xl">
+        
+        {/* Desktop Header */}
+        <div className="hidden md:flex items-center justify-between px-8 pt-6 pb-2 relative z-20">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Workspace:</span>
+            <span className="text-xs font-black text-slate-700 bg-blue-50 border border-blue-100 px-3 py-1 rounded-xl uppercase tracking-wide">
+              {projects.find(p => p.id === selectedProjectId)?.name || 'Outreach'}
+            </span>
+          </div>
+          <ProfileDropdown />
+        </div>
+
+        <div className="p-4 md:p-8 relative z-10 cream-panel min-h-[calc(100vh-8rem)] m-2 md:m-6 mt-2 md:mt-2 rounded-2xl">
           {children}
         </div>
         
@@ -264,7 +278,7 @@ const SessionWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
   return (
     <>
-      {state.isLoading && (
+      {state.isLoading && state.campaigns.length === 0 && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[9999] flex flex-col items-center justify-center animate-in fade-in duration-200">
           <div className="bg-white/95 border border-slate-200/50 rounded-3xl p-8 shadow-2xl flex flex-col items-center max-w-sm mx-4 transform animate-in zoom-in-95 duration-200 text-center">
             {/* 3D Loading Mascot Visual */}

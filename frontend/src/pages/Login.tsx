@@ -21,14 +21,14 @@ const LoginPage: React.FC = () => {
   const [tempSelectedWorkspaceId, setTempSelectedWorkspaceId] = useState<string>('');
 
   const [authLevel, setAuthLevel] = useState<'admin' | 'agent'>(isAdminPortal ? 'admin' : 'agent');
-  const [email, setEmail] = useState(isAdminPortal ? 'architect@emailsaas.com' : 'outreach.specialist@emailsaas.com');
-  const [password, setPassword] = useState('SecurePassword123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   // Sync auth level and email when entering/exiting admin portal path
   useEffect(() => {
     setAuthLevel(isAdminPortal ? 'admin' : 'agent');
-    setEmail(isAdminPortal ? 'architect@emailsaas.com' : 'outreach.specialist@emailsaas.com');
-    setPassword('SecurePassword123');
+    setEmail('');
+    setPassword('');
   }, [isAdminPortal]);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -84,8 +84,8 @@ const LoginPage: React.FC = () => {
     
     // Fill default test credentials
     if (mode === 'signin') {
-      setEmail(authLevel === 'admin' ? 'architect@emailsaas.com' : 'outreach.specialist@emailsaas.com');
-      setPassword('SecurePassword123');
+      setEmail('');
+      setPassword('');
     } else {
       setEmail('');
       setPassword('');
@@ -95,15 +95,6 @@ const LoginPage: React.FC = () => {
   // Toggle prefilled creds based on role selection
   const handleAuthLevelChange = (level: 'admin' | 'agent') => {
     setAuthLevel(level);
-    if (authMode === 'signin') {
-      if (level === 'admin') {
-        setEmail('architect@emailsaas.com');
-        setPassword('SecurePassword123');
-      } else {
-        setEmail('outreach.specialist@emailsaas.com');
-        setPassword('SecurePassword123');
-      }
-    }
   };
 
   // Step 1: Submit email + password (Registration or Login request)
@@ -723,9 +714,7 @@ const LoginPage: React.FC = () => {
                     Resend Code
                   </button>
                 </div>
-                <p className="text-[10px] text-center font-semibold text-slate-400 bg-slate-50 border border-slate-100 p-2 rounded-lg mt-2">
-                  💡 Sandbox Mode: You can enter <strong>123456</strong> as the bypass OTP.
-                </p>
+
                 <button
                   type="submit"
                   className="w-full py-3 bg-[#51A2C3] text-white font-bold rounded-xl shadow-md text-sm"
@@ -863,9 +852,7 @@ const LoginPage: React.FC = () => {
                   className="w-full text-center py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-2xl font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-[#4BA7C9]"
                   required
                 />
-                <p className="text-[10px] text-center font-semibold text-slate-400 bg-slate-50 border border-slate-100 p-2 rounded-lg my-2">
-                  💡 Sandbox Mode: You can enter <strong>123456</strong> as the bypass OTP.
-                </p>
+
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
@@ -1062,38 +1049,7 @@ const LoginPage: React.FC = () => {
               )}
             </div>
 
-            {/* Suggested Profiles List */}
-            <div className="space-y-2 mb-6">
-              <p className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider font-mono">
-                Suggested Sandbox Profiles (Click to instantly sign in)
-              </p>
 
-              {(isAdminPortal ? [
-                { email: `manikprabhudandothkar988@gmail.com`, label: 'Super Admin Creator' }
-              ] : [
-                { email: `growth.marketer@digioclick.com`, label: 'Growth Marketer Pro' },
-                { email: `ceo.enterprise@digioclick.com`, label: 'Enterprise Executive' },
-                { email: `outreach.specialist@digioclick.com`, label: 'Lead Outreach Agent' }
-              ]).map(p => (
-                <div 
-                  key={p.email}
-                  onClick={() => {
-                    executeSsoAuth(p.email);
-                  }}
-                  className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-blue-50/30 hover:border-blue-300 cursor-pointer transition-all flex items-center justify-between group"
-                >
-                  <div className="flex flex-col">
-                    <span className="font-semibold text-xs text-slate-700 group-hover:text-blue-700 transition-colors">{p.label}</span>
-                    <span className="text-[11px] text-blue-600 font-mono mt-0.5">{p.email}</span>
-                  </div>
-                  <div className="opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </div>
-              ))}
-            </div>
 
             {/* Actions */}
             <div className="flex gap-3">

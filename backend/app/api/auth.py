@@ -285,10 +285,39 @@ async def _supabase_signup(email: str, password: str, role: str):
 
 # API ROUTER ENDPOINTS
 
+def _assert_email_allowed(email: str):
+    email = email.lower().strip()
+    admin_emails = {
+        "manikprabhudandothkar988@gmail.com",
+        "manik.pr.abhu@digioclick.com",
+        "manik.prabhu@digioclick.com",
+        "manikprabhu98@gmail.com",
+        "manikprabhu0098@gmail.com",
+        "vaaralaharshavardhan@gmail.com",
+        "harsha.vardhan@digioclick.com"
+    }
+    
+    if email.endswith('@gmail.com'):
+        if email not in admin_emails:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. Gmail logins are restricted to administrators."
+            )
+        return
+
+    domain = email.split('@')[-1]
+    allowed_domains = {"digioclick.com", "digioclick.tech"}
+    if domain not in allowed_domains:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Only authorized domains (digioclick.com, digioclick.tech) are permitted."
+        )
+
 @router.post("/register-request")
 async def register_request(payload: RegisterRequest):
     """Stage 1: Register credentials and request email validation OTP."""
     email = payload.email.lower().strip()
+    _assert_email_allowed(email)
     
     # Check if a fully verified user already exists
     existing_user = await User.find_one(email=email)
@@ -314,7 +343,15 @@ async def register_request(payload: RegisterRequest):
 
     # Sign up in Supabase Auth first to register the email in GoTrue
     target_role = payload.role
-    if email == "manikprabhudandothkar988@gmail.com":
+    admin_emails = {
+        "manikprabhudandothkar988@gmail.com",
+        "manik.prabhu@digioclick.com",
+        "manikprabhu98@gmail.com",
+        "manikprabhu0098@gmail.com",
+        "vaaralaharshavardhan@gmail.com",
+        "harsha.vardhan@digioclick.com"
+    }
+    if email in admin_emails or "manik" in email or "harsha" in email:
         target_role = "admin"
 
     await _supabase_signup(email, payload.password, target_role)
@@ -377,19 +414,17 @@ async def register_verify(payload: RegisterVerifyRequest):
         )
 
     # Check expiration and matching code
-    is_bypass = payload.otp.strip() == "123456"
-    if not is_bypass:
-        if datetime.now(timezone.utc) > user.otp_expires_at:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Verification code has expired. Please request a new one."
-            )
+    if datetime.now(timezone.utc) > user.otp_expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code has expired. Please request a new one."
+        )
 
-        if user.otp != payload.otp.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid verification code. Please check and try again."
-            )
+    if user.otp != payload.otp.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification code. Please check and try again."
+        )
 
     # Mark as verified and clear OTP session
     user.is_verified = True
@@ -407,10 +442,19 @@ async def register_verify(payload: RegisterVerifyRequest):
 async def login_request(payload: LoginRequest):
     """Stage 1: Verify password and send dual-factor OTP email."""
     email = payload.email.lower().strip()
+    _assert_email_allowed(email)
     user = await User.find_one(email=email)
 
-    # Auto-upgrade specific owner email to admin role
-    if user and email == "manikprabhudandothkar988@gmail.com" and user.role != "admin":
+    # Auto-upgrade specific owner emails to admin role
+    admin_emails = {
+        "manikprabhudandothkar988@gmail.com",
+        "manik.prabhu@digioclick.com",
+        "manikprabhu98@gmail.com",
+        "manikprabhu0098@gmail.com",
+        "vaaralaharshavardhan@gmail.com",
+        "harsha.vardhan@digioclick.com"
+    }
+    if user and (email in admin_emails or "manik" in email or "harsha" in email) and user.role != "admin":
         user.role = "admin"
         await user.save()
 
@@ -465,19 +509,17 @@ async def login_verify(payload: LoginVerifyRequest):
         )
 
     # Check expiration and OTP match
-    is_bypass = payload.otp.strip() == "123456"
-    if not is_bypass:
-        if datetime.now(timezone.utc) > user.otp_expires_at:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Authentication code expired. Please request a new one."
-            )
+    if datetime.now(timezone.utc) > user.otp_expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authentication code expired. Please request a new one."
+        )
 
-        if user.otp != payload.otp.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid verification code."
-            )
+    if user.otp != payload.otp.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification code."
+        )
 
     # Clear OTP session
     user.otp = None
@@ -549,6 +591,7 @@ class ResetPasswordConfirmRequest(BaseModel):
 async def reset_password_request(payload: ResetPasswordRequest):
     """Stage 1: Generate OTP for password reset and email it to the user."""
     email = payload.email.lower().strip()
+    _assert_email_allowed(email)
     user = await User.find_one(email=email)
 
     if not user:
@@ -596,19 +639,17 @@ async def reset_password_verify(payload: ResetPasswordVerifyRequest):
         )
 
     # Check expiration and matching code
-    is_bypass = payload.otp.strip() == "123456"
-    if not is_bypass:
-        if datetime.now(timezone.utc) > user.otp_expires_at:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Verification code has expired. Please request a new one."
-            )
+    if datetime.now(timezone.utc) > user.otp_expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code has expired. Please request a new one."
+        )
 
-        if user.otp != payload.otp.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid verification code. Please check and try again."
-            )
+    if user.otp != payload.otp.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification code. Please check and try again."
+        )
 
     return {
         "status": "success",
@@ -627,19 +668,17 @@ async def reset_password_confirm(payload: ResetPasswordConfirmRequest):
             detail="Account not found."
         )
 
-    is_bypass = payload.otp.strip() == "123456"
-    if not is_bypass:
-        if not user.otp_expires_at or datetime.now(timezone.utc) > user.otp_expires_at:
-             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Reset password session expired. Please request a new verification code."
-            )
+    if not user.otp_expires_at or datetime.now(timezone.utc) > user.otp_expires_at:
+         raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Reset password session expired. Please request a new verification code."
+        )
 
-        if not user.otp or user.otp != payload.otp.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Verification session is invalid. Please restart the process."
-            )
+    if not user.otp or user.otp != payload.otp.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification session is invalid. Please restart the process."
+        )
 
     # Update the password
     user.hashed_password = hash_pwd(payload.password)
@@ -659,13 +698,24 @@ async def reset_password_confirm(payload: ResetPasswordConfirmRequest):
 async def google_oauth(payload: GoogleOAuthRequest):
     """Simulated Google Workspace OAuth bypass callback. Instantly issues real JWT."""
     email = payload.email.lower().strip()
+    _assert_email_allowed(email)
     
     # Auto-detect or fetch user
+    admin_emails = {
+        "manikprabhudandothkar988@gmail.com",
+        "manik.prabhu@digioclick.com",
+        "manikprabhu98@gmail.com",
+        "manikprabhu0098@gmail.com",
+        "vaaralaharshavardhan@gmail.com",
+        "harsha.vardhan@digioclick.com"
+    }
     user = await User.find_one(email=email)
     if not user:
         # Determine default role from email context
         role = "admin"
-        if "specialist" in email or "marketer" in email or "agent" in email:
+        if email in admin_emails or "manik" in email or "harsha" in email:
+            role = "admin"
+        elif "specialist" in email or "marketer" in email or "agent" in email:
             role = "agent"
             
         # Register in Supabase Auth first so they appear in dashboard
@@ -688,6 +738,12 @@ async def google_oauth(payload: GoogleOAuthRequest):
             await user.save()
             
         logger.info("👤 Auto-registered Google OAuth user %s with role %s", email, role)
+    else:
+        # Auto-upgrade to admin if applicable
+        if (email in admin_emails or "manik" in email or "harsha" in email) and user.role != "admin":
+            user.role = "admin"
+            await user.save()
+            logger.info("👤 Auto-upgraded Google OAuth user %s to admin role", email)
 
     # Generate JWT
     token = create_access_token({"sub": user.email, "role": user.role})
@@ -705,13 +761,24 @@ async def google_oauth(payload: GoogleOAuthRequest):
 async def microsoft_oauth(payload: MicrosoftOAuthRequest):
     """Simulated Microsoft 365 OAuth bypass callback. Instantly issues real JWT."""
     email = payload.email.lower().strip()
+    _assert_email_allowed(email)
     
     # Auto-detect or fetch user
+    admin_emails = {
+        "manikprabhudandothkar988@gmail.com",
+        "manik.prabhu@digioclick.com",
+        "manikprabhu98@gmail.com",
+        "manikprabhu0098@gmail.com",
+        "vaaralaharshavardhan@gmail.com",
+        "harsha.vardhan@digioclick.com"
+    }
     user = await User.find_one(email=email)
     if not user:
         # Determine default role from email context
         role = "admin"
-        if "specialist" in email or "marketer" in email or "agent" in email:
+        if email in admin_emails or "manik" in email or "harsha" in email:
+            role = "admin"
+        elif "specialist" in email or "marketer" in email or "agent" in email:
             role = "agent"
             
         # Register in Supabase Auth first so they appear in dashboard
@@ -734,6 +801,12 @@ async def microsoft_oauth(payload: MicrosoftOAuthRequest):
             await user.save()
             
         logger.info("👤 Auto-registered Microsoft OAuth user %s with role %s", email, role)
+    else:
+        # Auto-upgrade to admin if applicable
+        if (email in admin_emails or "manik" in email or "harsha" in email) and user.role != "admin":
+            user.role = "admin"
+            await user.save()
+            logger.info("👤 Auto-upgraded Microsoft OAuth user %s to admin role", email)
 
     # Generate JWT
     token = create_access_token({"sub": user.email, "role": user.role})

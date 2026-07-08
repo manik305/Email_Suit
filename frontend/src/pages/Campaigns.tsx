@@ -654,8 +654,10 @@ const CampaignsPage: React.FC = () => {
                   className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 focus:outline-none"
                   value={selectedProjectId}
                   onChange={e => {
-                    setSelectedProjectId(e.target.value);
-                    localStorage.setItem('selected_project_id', e.target.value);
+                    const newPid = e.target.value;
+                    setSelectedProjectId(newPid);
+                    localStorage.setItem('selected_project_id', newPid);
+                    refreshData();
                   }}
                 >
                   {projects.map(p => (

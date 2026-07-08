@@ -247,11 +247,37 @@ async def list_recipients(
             campaigns = [c for c in all_campaigns if c.project_id in project_ids]
 
     campaign_ids = {str(c.id) for c in campaigns}
-    all_recipients = await models.Recipient.find_all().sort("-created_at").to_list()
     
-    if project_id:
-        return [r for r in all_recipients if r.campaign_id in campaign_ids]
-    return all_recipients
+    if not campaign_ids and user.role != "admin":
+        return []
+
+    # Convert string IDs to UUID objects
+    from uuid import UUID
+    uuid_campaign_ids = []
+    for cid in campaign_ids:
+        try:
+            uuid_campaign_ids.append(UUID(cid))
+        except ValueError:
+            pass
+
+    from app.database import db_pool
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    async with db_pool.acquire() as conn:
+        if project_id or user.role != "admin":
+            if not uuid_campaign_ids:
+                return []
+            rows = await conn.fetch(
+                "SELECT * FROM public.recipients WHERE campaign_id = ANY($1) ORDER BY created_at DESC",
+                uuid_campaign_ids
+            )
+        else:
+            rows = await conn.fetch(
+                "SELECT * FROM public.recipients ORDER BY created_at DESC"
+            )
+
+    return [models.Recipient.from_row(r) for r in rows]
 
 
 @router.get("/recipients/by-campaign/{campaign_id}", response_model=List[schemas.Recipient])
