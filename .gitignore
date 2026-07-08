@@ -5,14 +5,50 @@
 .env
 .env.example
 
-# Markdown & Implementation plans
+# Python Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+backend/venv/
 
+# Node.js
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python Cache / compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+backend/.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Build outputs
+dist/
+frontend/dist/
+build/
+
+# Markdown & Implementation plans
 implementation_plan*
 azure_deployment_guide*
 hostinger_deployment_guide*
+
 # Terraform
 .terraform/
 *.tfstate
 *.tfstate.backup
 *.tfvars
 .terraform.lock.hcl
+
+# OS & Editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
