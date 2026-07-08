@@ -541,6 +541,19 @@ const LoginPage: React.FC = () => {
           
           <div className="my-auto max-w-md w-full mx-auto space-y-6">
             
+            {/* Mobile Logo Branding */}
+            <div className="flex items-center gap-3 md:hidden justify-center mb-6">
+              <img src={digioClickLogo} alt="Digio Click Logo" className="w-10 h-10 object-contain rounded-xl shadow-sm border border-slate-100 bg-white p-0.5" />
+              <div>
+                <h1 className="text-xl font-black text-slate-800 tracking-tight leading-none">
+                  DigioClick
+                </h1>
+                <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold block mt-0.5">
+                  Turning Clicks Into Clients
+                </span>
+              </div>
+            </div>
+
             {/* Header */}
             <div>
               <div className="flex items-baseline justify-between">

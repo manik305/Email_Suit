@@ -170,18 +170,22 @@ async def apply_company_throttling(campaign_id: str, max_contacts_per_company: i
     and defer the rest. Contacts without a company name are always pending/eligible.
     """
     from .models import Recipient
+    from app.database import db_pool
     recipients = await Recipient.find(campaign_id=str(campaign_id)).to_list()
     if not recipients:
         return
 
     company_groups = collections.defaultdict(list)
+    pending_ids = []
+    deferred_ids = []
+
     for r in recipients:
         if r.company_name and r.company_name.strip():
             company_groups[r.company_name.strip()].append(r)
         else:
             # If no company name is provided, default/reset status to pending if it was deferred
             if r.status == "deferred":
-                await r.update({"$set": {"status": "pending"}})
+                pending_ids.append(r.id)
 
     for company, group in company_groups.items():
         # Count how many are already outreached (sent, replied, bounced)
@@ -197,15 +201,29 @@ async def apply_company_throttling(campaign_id: str, max_contacts_per_company: i
 
             for r in selected:
                 if r.status != "pending":
-                    await r.update({"$set": {"status": "pending"}})
+                    pending_ids.append(r.id)
             for r in deferred:
                 if r.status != "deferred":
-                    await r.update({"$set": {"status": "deferred"}})
+                    deferred_ids.append(r.id)
         else:
             # No slots remaining, mark all pending/deferred as deferred
             for r in pending_and_deferred:
                 if r.status != "deferred":
-                    await r.update({"$set": {"status": "deferred"}})
+                    deferred_ids.append(r.id)
+
+    if pending_ids or deferred_ids:
+        async with db_pool.acquire() as conn:
+            async with conn.transaction():
+                if pending_ids:
+                    await conn.execute(
+                        "UPDATE public.recipients SET status = 'pending' WHERE id = ANY($1::uuid[])",
+                        pending_ids
+                    )
+                if deferred_ids:
+                    await conn.execute(
+                        "UPDATE public.recipients SET status = 'deferred' WHERE id = ANY($1::uuid[])",
+                        deferred_ids
+                    )
 
 
 _active_campaign_runs = set()
@@ -454,10 +472,24 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                     if latest_recipient.status != "pending":
                         logger.info("Recipient %s status is %s (expected pending), skipping duplicate send.", r.email, latest_recipient.status)
                         continue
-                    subject = subject_tpl
+                    subject = (
+                        subject_tpl
+                        .replace("{name}", recipient_name)
+                        .replace("{first_name}", r.first_name or "")
+                        .replace("{last_name}", r.last_name or "")
+                        .replace("{email}", r.email)
+                        .replace("{designation}", r.title or "")
+                        .replace("{department}", r.department or "")
+                        .replace("{industry}", r.industry or "")
+                        .replace("{region}", r.region or "")
+                        .replace("{company_name}", r.company_name or "")
+                        .replace("{company}", r.company_name or "")
+                    )
                     body = (
                         body_tpl
                         .replace("{name}", recipient_name)
+                        .replace("{first_name}", r.first_name or "")
+                        .replace("{last_name}", r.last_name or "")
                         .replace("{email}", r.email)
                         .replace("{designation}", r.title or "")
                         .replace("{department}", r.department or "")
@@ -471,7 +503,20 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         logger.info("Recipient %s status is %s (expected sent), skipping duplicate follow-up.", r.email, latest_recipient.status)
                         continue
                     next_count = r.follow_up_count + 1
-                    subject = f"Re: {subject_tpl}"
+                    subject_raw = f"Re: {subject_tpl}"
+                    subject = (
+                        subject_raw
+                        .replace("{name}", recipient_name)
+                        .replace("{first_name}", r.first_name or "")
+                        .replace("{last_name}", r.last_name or "")
+                        .replace("{email}", r.email)
+                        .replace("{designation}", r.title or "")
+                        .replace("{department}", r.department or "")
+                        .replace("{industry}", r.industry or "")
+                        .replace("{region}", r.region or "")
+                        .replace("{company_name}", r.company_name or "")
+                        .replace("{company}", r.company_name or "")
+                    )
                     body = None
                     if campaign.follow_up_templates and len(campaign.follow_up_templates) > next_count:
                         body = campaign.follow_up_templates[next_count]
@@ -487,6 +532,8 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         body = (
                             body
                             .replace("{name}", recipient_name)
+                            .replace("{first_name}", r.first_name or "")
+                            .replace("{last_name}", r.last_name or "")
                             .replace("{email}", r.email)
                             .replace("{designation}", r.title or "")
                             .replace("{department}", r.department or "")
@@ -638,6 +685,7 @@ async def update_recipient_send_times(campaign_id: str) -> None:
     """Pre-calculate and save estimated dispatch times for all pending campaign recipients."""
     from .models import Campaign, Recipient
     from datetime import datetime, timedelta, timezone
+    from app.database import db_pool
 
     campaign = await Campaign.get(campaign_id)
     if not campaign:
@@ -648,8 +696,10 @@ async def update_recipient_send_times(campaign_id: str) -> None:
 
     if campaign.status == "paused" or not campaign.send_at:
         # Clear estimated send times if campaign is paused or has no send_at
-        for r in pending_recipients:
-            await r.update({"$set": {"send_at": None}})
+        ids = [r.id for r in pending_recipients]
+        if ids:
+            async with db_pool.acquire() as conn:
+                await conn.execute("UPDATE public.recipients SET send_at = NULL WHERE id = ANY($1::uuid[])", ids)
         return
 
     try:
@@ -672,9 +722,18 @@ async def update_recipient_send_times(campaign_id: str) -> None:
         mails_per_min = 1
     gap_seconds = 60.0 / mails_per_min
 
+    batch_data = []
     for idx, r in enumerate(pending_recipients):
         est_send_time = base_time + timedelta(seconds=idx * gap_seconds)
-        await r.update({"$set": {"send_at": est_send_time}})
+        batch_data.append((est_send_time, r.id))
+
+    if batch_data:
+        async with db_pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.executemany(
+                    "UPDATE public.recipients SET send_at = $1 WHERE id = $2::uuid",
+                    batch_data
+                )
 
 
 def start_scheduler() -> None:

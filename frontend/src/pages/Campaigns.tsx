@@ -430,6 +430,9 @@ const CampaignsPage: React.FC = () => {
   const [sideTzSearch, setSideTzSearch] = useState('');
   const [sideTimezone, setSideTimezone] = useState('America/New_York');
   const [sideLocalDt, setSideLocalDt] = useState('');
+  const [sideMailsPerMinute, setSideMailsPerMinute] = useState(2);
+  const [sideDailyFreshLimit, setSideDailyFreshLimit] = useState(100);
+  const [sideMaxContactsPerCompany, setSideMaxContactsPerCompany] = useState(1);
   const [updatingSchedule, setUpdatingSchedule] = useState(false);
   const [sendingNow, setSendingNow] = useState(false);
   const [showConfirmSendNow, setShowConfirmSendNow] = useState(false);
@@ -448,6 +451,9 @@ const CampaignsPage: React.FC = () => {
       } else {
         setSideLocalDt('');
       }
+      setSideMailsPerMinute(selected.mails_per_minute ?? 2);
+      setSideDailyFreshLimit(selected.daily_fresh_limit ?? 100);
+      setSideMaxContactsPerCompany(selected.max_contacts_per_company ?? 1);
     }
   }, [selectedId, selected?.send_at, selected?.timezone]);
 
@@ -529,6 +535,9 @@ const CampaignsPage: React.FC = () => {
         body: JSON.stringify({
           timezone: sideTimezone,
           send_at: send_at,
+          mails_per_minute: sideMailsPerMinute,
+          daily_fresh_limit: sideDailyFreshLimit,
+          max_contacts_per_company: sideMaxContactsPerCompany,
         }),
       });
       if (res.ok) {
@@ -978,8 +987,8 @@ const CampaignsPage: React.FC = () => {
           <div className="bg-white border border-slate-200/60 rounded-2xl p-4 shadow-sm">
             
             {/* Header info */}
-             <div className="flex items-center justify-between border-b border-slate-150 pb-3 mb-4">
-              <div className="flex items-center gap-3">
+             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-150 pb-3 mb-4 gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-bold text-slate-800">{selected?.name}</h2>
                 <button 
                   onClick={handleStartEdit} 
@@ -1012,7 +1021,7 @@ const CampaignsPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 self-start sm:self-auto">
                 <button
                   onClick={() => { setSelectedId(null); setActivePanel(null); }}
                   className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-700 transition"
@@ -1188,16 +1197,43 @@ const CampaignsPage: React.FC = () => {
                     <span className="text-[10px] font-bold text-[#2C5F78] uppercase tracking-wider block">Scheduler Constraints</span>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="bg-white p-2 rounded-lg border border-slate-150">
-                        <span className="text-[9px] text-slate-400 block font-bold uppercase">Speed</span>
-                        <span className="font-bold text-slate-700">{selected?.mails_per_minute ?? 2} mails/min</span>
+                        <label htmlFor="side-speed" className="text-[9px] text-slate-400 block font-bold uppercase">Speed</label>
+                        <select
+                          id="side-speed"
+                          value={sideMailsPerMinute}
+                          onChange={e => setSideMailsPerMinute(parseInt(e.target.value))}
+                          className="w-full bg-transparent text-slate-700 font-bold focus:outline-none"
+                        >
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => (
+                            <option key={v} value={v}>{v} / min</option>
+                          ))}
+                        </select>
                       </div>
                       <div className="bg-slate-50/50 p-2 rounded-lg border border-slate-150">
-                        <span className="text-[9px] text-slate-400 block font-bold uppercase">Daily Fresh</span>
-                        <span className="font-bold text-slate-700">{selected?.daily_fresh_limit ?? 100} limit</span>
+                        <label htmlFor="side-fresh" className="text-[9px] text-slate-400 block font-bold uppercase">Daily Fresh</label>
+                        <select
+                          id="side-fresh"
+                          value={sideDailyFreshLimit}
+                          onChange={e => setSideDailyFreshLimit(parseInt(e.target.value))}
+                          className="w-full bg-transparent text-slate-700 font-bold focus:outline-none"
+                        >
+                          {[50, 100, 200, 300, 400, 500].map(v => (
+                            <option key={v} value={v}>{v} limit</option>
+                          ))}
+                        </select>
                       </div>
                       <div className="bg-white p-2 rounded-lg border border-slate-150">
-                        <span className="text-[9px] text-slate-400 block font-bold uppercase">Max per Co.</span>
-                        <span className="font-bold text-slate-700">{selected?.max_contacts_per_company ?? 1} contacts</span>
+                        <label htmlFor="side-maxco" className="text-[9px] text-slate-400 block font-bold uppercase">Max per Co.</label>
+                        <select
+                          id="side-maxco"
+                          value={sideMaxContactsPerCompany}
+                          onChange={e => setSideMaxContactsPerCompany(parseInt(e.target.value))}
+                          className="w-full bg-transparent text-slate-700 font-bold focus:outline-none"
+                        >
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => (
+                            <option key={v} value={v}>{v} contacts</option>
+                          ))}
+                        </select>
                       </div>
                       <div className="bg-slate-50/50 p-2 rounded-lg border border-slate-150">
                         <span className="text-[9px] text-slate-400 block font-bold uppercase">Consecutive Errors</span>
@@ -1459,7 +1495,51 @@ const CampaignsPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <label htmlFor="c-subject" className="block font-bold text-slate-500 uppercase">Email Subject</label>
+                  <div className="flex justify-between items-center">
+                    <label htmlFor="c-subject" className="block font-bold text-slate-500 uppercase">Email Subject</label>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const input = document.getElementById('c-subject') as HTMLInputElement;
+                          if (input) {
+                            const start = input.selectionStart ?? 0;
+                            const end = input.selectionEnd ?? 0;
+                            const text = form.subject || '';
+                            const newVal = text.substring(0, start) + "{first_name}" + text.substring(end);
+                            set('subject', newVal);
+                            setTimeout(() => {
+                              input.focus();
+                              input.setSelectionRange(start + 12, start + 12);
+                            }, 50);
+                          }
+                        }}
+                        className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-650 rounded-md border border-slate-200"
+                      >
+                        + First Name
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const input = document.getElementById('c-subject') as HTMLInputElement;
+                          if (input) {
+                            const start = input.selectionStart ?? 0;
+                            const end = input.selectionEnd ?? 0;
+                            const text = form.subject || '';
+                            const newVal = text.substring(0, start) + "{company_name}" + text.substring(end);
+                            set('subject', newVal);
+                            setTimeout(() => {
+                              input.focus();
+                              input.setSelectionRange(start + 14, start + 14);
+                            }, 50);
+                          }
+                        }}
+                        className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-650 rounded-md border border-slate-200"
+                      >
+                        + Company Name
+                      </button>
+                    </div>
+                  </div>
                   <input id="c-subject" placeholder="Enter Subject template" value={form.subject} onChange={e=>set('subject',e.target.value)}
                     className="w-full bg-white border border-slate-250 rounded-xl px-4 py-2.5 text-slate-805 focus:outline-none focus:ring-1 focus:ring-[#4BA7C9]"/>
                 </div>
@@ -1825,7 +1905,51 @@ const CampaignsPage: React.FC = () => {
                   </div>
 
                   <div className="space-y-1">
-                    <label htmlFor="initial-subject" className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Subject</label>
+                    <div className="flex justify-between items-center">
+                      <label htmlFor="initial-subject" className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Subject</label>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const input = document.getElementById('initial-subject') as HTMLInputElement;
+                            if (input) {
+                              const start = input.selectionStart ?? 0;
+                              const end = input.selectionEnd ?? 0;
+                              const text = initialSubject || '';
+                              const newVal = text.substring(0, start) + "{first_name}" + text.substring(end);
+                              setInitialSubject(newVal);
+                              setTimeout(() => {
+                                input.focus();
+                                input.setSelectionRange(start + 12, start + 12);
+                              }, 50);
+                            }
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[9px] font-bold text-slate-550 rounded border border-slate-200"
+                        >
+                          + First Name
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const input = document.getElementById('initial-subject') as HTMLInputElement;
+                            if (input) {
+                              const start = input.selectionStart ?? 0;
+                              const end = input.selectionEnd ?? 0;
+                              const text = initialSubject || '';
+                              const newVal = text.substring(0, start) + "{company_name}" + text.substring(end);
+                              setInitialSubject(newVal);
+                              setTimeout(() => {
+                                input.focus();
+                                input.setSelectionRange(start + 14, start + 14);
+                              }, 50);
+                            }
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[9px] font-bold text-slate-550 rounded border border-slate-200"
+                        >
+                          + Company Name
+                        </button>
+                      </div>
+                    </div>
                     <input
                       id="initial-subject"
                       type="text"

@@ -475,10 +475,24 @@ async def get_recipient_draft_preview(recipient_id: str):
     is_follow_up = (recipient.status == "sent")
     
     if not is_follow_up:
-        subject = subject_tpl
+        subject = (
+            subject_tpl
+            .replace("{name}", recipient_name)
+            .replace("{first_name}", recipient.first_name or "")
+            .replace("{last_name}", recipient.last_name or "")
+            .replace("{email}", recipient.email)
+            .replace("{designation}", recipient.title or "")
+            .replace("{department}", recipient.department or "")
+            .replace("{industry}", recipient.industry or "")
+            .replace("{region}", recipient.region or "")
+            .replace("{company_name}", recipient.company_name or "")
+            .replace("{company}", recipient.company_name or "")
+        )
         body = (
             body_tpl
             .replace("{name}", recipient_name)
+            .replace("{first_name}", recipient.first_name or "")
+            .replace("{last_name}", recipient.last_name or "")
             .replace("{email}", recipient.email)
             .replace("{designation}", recipient.title or "")
             .replace("{department}", recipient.department or "")
@@ -489,7 +503,20 @@ async def get_recipient_draft_preview(recipient_id: str):
         )
     else:
         next_count = recipient.follow_up_count + 1
-        subject = f"Re: {subject_tpl}"
+        subject_raw = f"Re: {subject_tpl}"
+        subject = (
+            subject_raw
+            .replace("{name}", recipient_name)
+            .replace("{first_name}", recipient.first_name or "")
+            .replace("{last_name}", recipient.last_name or "")
+            .replace("{email}", recipient.email)
+            .replace("{designation}", recipient.title or "")
+            .replace("{department}", recipient.department or "")
+            .replace("{industry}", recipient.industry or "")
+            .replace("{region}", recipient.region or "")
+            .replace("{company_name}", recipient.company_name or "")
+            .replace("{company}", recipient.company_name or "")
+        )
         body = None
         if campaign.follow_up_templates and len(campaign.follow_up_templates) > next_count:
             body = campaign.follow_up_templates[next_count]
@@ -505,6 +532,8 @@ async def get_recipient_draft_preview(recipient_id: str):
             body = (
                 body
                 .replace("{name}", recipient_name)
+                .replace("{first_name}", recipient.first_name or "")
+                .replace("{last_name}", recipient.last_name or "")
                 .replace("{email}", recipient.email)
                 .replace("{designation}", recipient.title or "")
                 .replace("{department}", recipient.department or "")

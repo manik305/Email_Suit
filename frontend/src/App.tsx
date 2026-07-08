@@ -69,15 +69,60 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     { name: 'Meetings',         path: '/meetings' },
   ];
 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-800 font-inter">
-      {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 border-r border-slate-200 bg-white flex flex-col relative z-40">
+      {/* Mobile Top Navbar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-30">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg transition"
+            aria-label="Open menu"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <img src={digioClickLogo} alt="Digio Click Logo" className="w-7 h-7 object-contain rounded-lg border border-slate-200 bg-white p-0.5" />
+          <span className="font-bold text-sm text-slate-800">Digio Click</span>
+        </div>
+        
+        {/* Workspace Indicator badge */}
+        <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider max-w-[120px] truncate">
+          {projects.find(p => p.id === selectedProjectId)?.name || 'Outreach'}
+        </span>
+      </div>
+
+      {/* Backdrop overlay for mobile sidebar drawer */}
+      {isSidebarOpen && (
+        <div 
+          onClick={() => setIsSidebarOpen(false)}
+          className="md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 transition-opacity"
+        />
+      )}
+
+      {/* Sidebar aside drawer */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white flex flex-col border-r border-slate-200 transition-transform duration-300 md:static md:translate-x-0 ${
+        isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}>
         <div className="h-16 flex items-center px-5 gap-3 border-b border-slate-200 bg-gradient-to-r from-blue-50/40 to-transparent">
           <img src={digioClickLogo} alt="Digio Click Logo" className="w-8 h-8 object-contain rounded-lg shadow-sm border border-slate-200 bg-white p-0.5" />
           <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500 bg-clip-text text-transparent">
             Digio Click
           </h1>
+          <button 
+            onClick={() => setIsSidebarOpen(false)}
+            className="md:hidden ml-auto p-1.5 text-slate-400 hover:text-slate-650"
+            aria-label="Close menu"
+          >
+            ✕
+          </button>
         </div>
 
         {/* Workspace Switcher */}
@@ -142,9 +187,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </aside>
 
       {/* Main content area */}
-      <main className="flex-1 relative overflow-y-auto bg-slate-50/30">
+      <main className="flex-1 relative overflow-y-auto bg-slate-50/30 pt-14 md:pt-0">
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/30 via-transparent to-transparent"></div>
-        <div className="p-8 relative z-10 cream-panel min-h-[calc(100vh-4rem)] m-6 rounded-2xl">
+        <div className="p-4 md:p-8 relative z-10 cream-panel min-h-[calc(100vh-4rem)] m-2 md:m-6 rounded-2xl">
           {children}
         </div>
         
