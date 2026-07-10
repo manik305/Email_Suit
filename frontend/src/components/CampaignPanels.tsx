@@ -477,7 +477,7 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: 'pending' | 'sent'
   const [list, setList] = useState<Recipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', company_name: '' });
+  const [editForm, setEditForm] = useState({ first_name: '', company_name: '' });
   
   // States for Draft Preview Modal
   const [previewMsg, setPreviewMsg] = useState<{ subject: string; body: string } | null>(null);
@@ -539,7 +539,7 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: 'pending' | 'sent'
       <table className="w-full text-left text-sm">
         <thead>
           <tr className="text-[11px] uppercase tracking-wider text-slate-500 bg-slate-900/40">
-            <th className="px-6 py-3">Name / Email</th>
+            <th className="px-6 py-3">First Name / Email</th>
             <th className="px-6 py-3">Company Name</th>
             <th className="px-6 py-3">Designation</th>
             {status === 'pending' && <th className="px-6 py-3">Scheduled Send</th>}
@@ -554,12 +554,13 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: 'pending' | 'sent'
                 {editingId === r.id ? (
                   <input
                     type="text"
-                    value={editForm.name}
-                    onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
+                    value={editForm.first_name || ''}
+                    onChange={e => setEditForm(p => ({ ...p, first_name: e.target.value }))}
                     className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs w-full"
+                    placeholder="First Name"
                   />
                 ) : (
-                  <p className="text-slate-200 font-medium">{r.name || 'Unknown'}</p>
+                  <p className="text-slate-200 font-medium">{r.first_name || 'Unknown'}</p>
                 )}
                 <p className="text-xs text-slate-500 mt-0.5">{r.email}</p>
                 {r.response_category && (
@@ -619,7 +620,7 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: 'pending' | 'sent'
                     <button
                       onClick={() => {
                         setEditingId(r.id);
-                        setEditForm({ name: r.name || '', company_name: r.company_name || '' });
+                        setEditForm({ first_name: r.first_name || '', company_name: r.company_name || '' });
                       }}
                       className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 font-bold rounded text-[10px] border border-slate-700 transition"
                     >

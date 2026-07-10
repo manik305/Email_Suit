@@ -39,29 +39,31 @@ def calculate_next_send_at(current_send_at_str: Optional[str], schedule: str, tz
             target_time = now.replace(hour=20, minute=30, second=0, microsecond=0)
             if now >= target_time:
                 target_time += timedelta(days=1)
-            return target_time.isoformat()
         else:
             # 10:00 AM IST -> 04:30 UTC
             target_time = now.replace(hour=4, minute=30, second=0, microsecond=0)
             if now >= target_time:
                 target_time += timedelta(days=1)
-            return target_time.isoformat()
             
     elif schedule == "Weekly":
         try:
-            dt = datetime.fromisoformat(current_send_at_str.replace("Z", "+00:00"))
-            return (dt + timedelta(days=7)).isoformat()
+            target_time = datetime.fromisoformat(current_send_at_str.replace("Z", "+00:00")) + timedelta(days=7)
         except Exception:
-            return (now + timedelta(days=7)).isoformat()
+            target_time = now + timedelta(days=7)
             
     elif schedule == "Monthly":
         try:
-            dt = datetime.fromisoformat(current_send_at_str.replace("Z", "+00:00"))
-            return (dt + timedelta(days=30)).isoformat()
+            target_time = datetime.fromisoformat(current_send_at_str.replace("Z", "+00:00")) + timedelta(days=30)
         except Exception:
-            return (now + timedelta(days=30)).isoformat()
-            
-    return None
+            target_time = now + timedelta(days=30)
+    else:
+        return None
+
+    # Skip weekends: if target day is Saturday (5) or Sunday (6), move to Monday
+    while target_time.weekday() >= 5:
+        target_time += timedelta(days=1)
+
+    return target_time.isoformat()
 
 
 def calculate_next_follow_up(campaign, days: int = 1) -> datetime:
@@ -321,6 +323,20 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
         if not campaign:
             logger.warning("Campaign %s not found.", campaign_id)
             return {"sent": 0, "failed": 0, "status": "not_found"}
+
+        # ── Strict Weekend Execution Block ──
+        # Ensure we do not send any fresh contacts or follow-ups on weekends.
+        campaign_tz_name = campaign.timezone or "America/New_York"
+        try:
+            tz = ZoneInfo(campaign_tz_name)
+        except Exception:
+            tz = ZoneInfo("America/New_York")
+        local_now = datetime.now(timezone.utc).astimezone(tz)
+        if local_now.weekday() >= 5:
+            logger.info("Campaign %s: Weekend detected (%s). Skipping execution.", campaign_id, local_now.strftime("%A"))
+            _active_campaign_runs.discard(campaign_id)
+            return {"sent": 0, "failed": 0, "status": "weekend_skip"}
+
 
         if campaign.status in ["paused", "completed"]:
             logger.info("Campaign %s is %s, skipping queue processing.", campaign_id, campaign.status)
