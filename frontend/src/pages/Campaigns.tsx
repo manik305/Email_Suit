@@ -302,7 +302,6 @@ const CampaignsPage: React.FC = () => {
           return;
         }
 
-      try {
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
           ...getAuthHeaders(),
