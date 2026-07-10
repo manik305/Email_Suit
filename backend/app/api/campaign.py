@@ -52,14 +52,19 @@ async def _get_config_for_campaign(campaign: models.Campaign) -> models.EmailCon
 
 def _render_body(template: str, recipient: models.Recipient) -> str:
     """Simple token substitution in email body templates."""
+    recipient_name = recipient.name or (f"{recipient.first_name} {recipient.last_name}" if recipient.first_name or recipient.last_name else "there")
     return (
         template
-        .replace("{name}", recipient.name or "there")
-        .replace("{email}", recipient.email)
-        .replace("{designation}", recipient.designation or "")
-        .replace("{department}", recipient.department or "")
-        .replace("{industry}", recipient.industry or "")
-        .replace("{region}", recipient.region or "")
+        .replace("{{name}}", recipient_name).replace("{name}", recipient_name)
+        .replace("{{first_name}}", recipient.first_name or "").replace("{first_name}", recipient.first_name or "")
+        .replace("{{last_name}}", recipient.last_name or "").replace("{last_name}", recipient.last_name or "")
+        .replace("{{email}}", recipient.email).replace("{email}", recipient.email)
+        .replace("{{designation}}", recipient.title or "").replace("{designation}", recipient.title or "")
+        .replace("{{department}}", recipient.department or "").replace("{department}", recipient.department or "")
+        .replace("{{industry}}", recipient.industry or "").replace("{industry}", recipient.industry or "")
+        .replace("{{region}}", recipient.region or "").replace("{region}", recipient.region or "")
+        .replace("{{company_name}}", recipient.company_name or "").replace("{company_name}", recipient.company_name or "")
+        .replace("{{company}}", recipient.company_name or "").replace("{company}", recipient.company_name or "")
     )
 
 

@@ -1987,14 +1987,14 @@ const CampaignsPage: React.FC = () => {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => setInitialBody(p => p + ' {name}')}
+                        onClick={() => setInitialBody(p => p + ' {{first_name}}')}
                         className="px-2.5 py-1 bg-slate-200 hover:bg-slate-350 rounded text-[10px] font-mono text-slate-700 font-bold transition hover:bg-slate-300"
                       >
-                        + Name
+                        + First Name
                       </button>
                       <button
                         type="button"
-                        onClick={() => setInitialBody(p => p + ' {company_name}')}
+                        onClick={() => setInitialBody(p => p + ' {{company}}')}
                         className="px-2.5 py-1 bg-slate-200 hover:bg-slate-350 rounded text-[10px] font-mono text-slate-700 font-bold transition hover:bg-slate-300"
                       >
                         + Company Name
@@ -2101,13 +2101,13 @@ const CampaignsPage: React.FC = () => {
                           const currentVal = followUps[followUpStage] || '';
                           setFollowUps(prev => {
                             const copy = [...prev];
-                            copy[followUpStage] = currentVal + ' {name}';
+                            copy[followUpStage] = currentVal + ' {{first_name}}';
                             return copy;
                           });
                         }}
                         className="px-2.5 py-1 bg-slate-200 hover:bg-slate-350 rounded text-[10px] font-mono text-slate-700 font-bold transition hover:bg-slate-300"
                       >
-                        + Name
+                        + First Name
                       </button>
                       <button
                         type="button"
@@ -2115,7 +2115,7 @@ const CampaignsPage: React.FC = () => {
                           const currentVal = followUps[followUpStage] || '';
                           setFollowUps(prev => {
                             const copy = [...prev];
-                            copy[followUpStage] = currentVal + ' {company_name}';
+                            copy[followUpStage] = currentVal + ' {{company}}';
                             return copy;
                           });
                         }}
