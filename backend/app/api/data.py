@@ -8,7 +8,7 @@ Routes
   POST  /recipients/assign              – bulk-assign recipients to a campaign
   PATCH /recipients/{id}/campaign       – assign single recipient to campaign
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, Body, Query, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Body, Query, Depends, Form
 from app.api.auth import get_current_user_email
 import pandas as pd
 import io
@@ -22,7 +22,7 @@ router = APIRouter()
 # ─── Upload ───────────────────────────────────────────────────────────────────
 
 @router.post("/upload", response_model=dict)
-async def upload_data(file: UploadFile = File(...)):
+async def upload_data(file: UploadFile = File(...), campaign_id: Optional[str] = Form(None)):
     content = await file.read()
     
     # 1. Determine format and parse
@@ -124,7 +124,11 @@ async def upload_data(file: UploadFile = File(...)):
             if not email:
                 continue
                 
-            existing = await models.Recipient.find_one(email=email)
+            if campaign_id:
+                existing = await models.Recipient.find_one(email=email, campaign_id=campaign_id)
+            else:
+                existing = await models.Recipient.find_one(email=email, campaign_id=None)
+                
             if not existing:
                 recipient = models.Recipient(
                     email=email,
@@ -142,7 +146,8 @@ async def upload_data(file: UploadFile = File(...)):
                     zip_code=pin,
                     country=ctry,
                     region=region,
-                    status="pending"
+                    status="pending",
+                    campaign_id=campaign_id
                 )
                 await recipient.insert()
                 count += 1
@@ -195,9 +200,13 @@ class RecipientCreateRequest(BaseModel):
 
 @router.post("/recipients", response_model=schemas.Recipient)
 async def create_recipient(req: RecipientCreateRequest):
-    existing = await models.Recipient.find_one(email=req.email)
+    if req.campaign_id:
+        existing = await models.Recipient.find_one(email=req.email, campaign_id=req.campaign_id)
+    else:
+        existing = await models.Recipient.find_one(email=req.email, campaign_id=None)
+        
     if existing:
-        raise HTTPException(status_code=400, detail="A lead with this email address already exists.")
+        raise HTTPException(status_code=400, detail="A lead with this email address already exists in this campaign.")
         
     recipient = models.Recipient(
         email=req.email,

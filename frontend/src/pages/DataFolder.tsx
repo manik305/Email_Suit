@@ -410,10 +410,18 @@ const DataFolderPage: React.FC = () => {
   };
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault(); setDragActive(false);
-    if (e.dataTransfer.files[0]) uploadFileToBackend(e.dataTransfer.files[0]);
+    if (!selectedCampaignId) {
+      showToast('❌ Please select a campaign before uploading leads.');
+      return;
+    }
+    if (e.dataTransfer.files[0]) uploadFileToBackend(e.dataTransfer.files[0], selectedCampaignId);
   };
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) uploadFileToBackend(e.target.files[0]);
+    if (!selectedCampaignId) {
+      showToast('❌ Please select a campaign before uploading leads.');
+      return;
+    }
+    if (e.target.files?.[0]) uploadFileToBackend(e.target.files[0], selectedCampaignId);
   };
 
   const handleResetDatabase = async () => {

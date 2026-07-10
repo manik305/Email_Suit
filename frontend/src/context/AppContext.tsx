@@ -117,7 +117,7 @@ export interface CreateCampaignPayload {
 interface AppContextType {
   state: AppState;
   addFile: (file: UploadedFile) => void;
-  uploadFileToBackend: (file: File) => Promise<void>;
+  uploadFileToBackend: (file: File, campaignId?: string) => Promise<void>;
   createCampaign: (data: CreateCampaignPayload) => Promise<Campaign | null>;
   updateEmailConfig: (config: EmailConfigLegacy) => void;
   refreshData: () => Promise<void>;
@@ -231,9 +231,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addFile = (file: UploadedFile) =>
     setState(prev => ({ ...prev, files: [file, ...prev.files] }));
 
-  const uploadFileToBackend = async (file: File) => {
+  const uploadFileToBackend = async (file: File, campaignId?: string) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (campaignId) {
+      formData.append('campaign_id', campaignId);
+    }
     try {
       const res = await fetch(`${API_BASE_URL}/data/upload`, {
         method: 'POST',
