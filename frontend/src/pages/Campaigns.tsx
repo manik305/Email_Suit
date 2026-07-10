@@ -146,6 +146,11 @@ const CampaignsPage: React.FC = () => {
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3500); };
 
+  const getAuthHeaders = (): Record<string, string> => {
+    const token = localStorage.getItem('access_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  };
+
   const handleCloseModal = () => {
     setShowModal(false);
     setModalStep(1);
@@ -207,7 +212,7 @@ const CampaignsPage: React.FC = () => {
     setDraftLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/chat/draft`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'application/json', ...getAuthHeaders()},
         body: JSON.stringify({ campaign_name:form.name, target_segment:form.target_segment, tone:form.tone, product_or_service:form.product||undefined, include_subject:true }),
       });
       if (res.ok) {
@@ -297,13 +302,11 @@ const CampaignsPage: React.FC = () => {
           return;
         }
 
-        const token = localStorage.getItem('access_token');
+      try {
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         };
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
 
         const configRes = await fetch(`${API_BASE_URL}/config/`, {
           method: 'POST',
@@ -333,13 +336,10 @@ const CampaignsPage: React.FC = () => {
 
     if (isEditing && editCampaignId) {
       try {
-        const token = localStorage.getItem('access_token');
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         };
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
 
         const res = await fetch(`${API_BASE_URL}/campaigns/${editCampaignId}`, {
           method: 'PATCH',
@@ -476,7 +476,7 @@ const CampaignsPage: React.FC = () => {
     try {
       const res = await fetch(`${API_BASE_URL}/chat/draft`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           campaign_name: selected.name,
           target_segment: selected.target_segment || 'All Leads',
@@ -505,7 +505,7 @@ const CampaignsPage: React.FC = () => {
     try {
       const res = await fetch(`${API_BASE_URL}/campaigns/${selectedId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           subject: initialSubject,
           body_template: initialBody,
@@ -531,7 +531,7 @@ const CampaignsPage: React.FC = () => {
       const send_at = sideLocalDt ? localToUtc(sideLocalDt, sideTimezone) : null;
       const res = await fetch(`${API_BASE_URL}/campaigns/${selectedId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           timezone: sideTimezone,
           send_at: send_at,
@@ -560,6 +560,7 @@ const CampaignsPage: React.FC = () => {
     try {
       const res = await fetch(`${API_BASE_URL}/campaigns/${selectedId}/send`, {
         method: 'POST',
+        headers: getAuthHeaders(),
       });
       if (res.ok) {
         const d = await res.json();
@@ -580,13 +581,10 @@ const CampaignsPage: React.FC = () => {
     if (!selected) return;
     const newStatus = selected.status === 'active' ? 'paused' : 'active';
     try {
-      const token = localStorage.getItem('access_token');
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
+        ...getAuthHeaders(),
       };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
       const res = await fetch(`${API_BASE_URL}/campaigns/${selected.id}`, {
         method: 'PATCH',
         headers,
@@ -862,7 +860,7 @@ const CampaignsPage: React.FC = () => {
                         <button
                           onClick={async () => {
                             if (window.confirm(`Are you sure you want to delete campaign "${c.name}"?`)) {
-                              const res = await fetch(`${API_BASE_URL}/campaigns/${c.id}`, { method: 'DELETE' });
+                              const res = await fetch(`${API_BASE_URL}/campaigns/${c.id}`, { method: 'DELETE', headers: getAuthHeaders() });
                               if (res.ok) {
                                 await refreshData();
                                 showToast('🗑️ Campaign deleted successfully');
