@@ -31,7 +31,7 @@ const DataIntegrationPanel: React.FC<DataIntegrationPanelProps> = ({ campaignId,
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [leads, setLeads] = useState<Recipient[]>([]);
   const [loadingLeads, setLoadingLeads] = useState(true);
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch campaign recipients
@@ -91,7 +91,7 @@ const DataIntegrationPanel: React.FC<DataIntegrationPanelProps> = ({ campaignId,
     const csvContent = REQUIRED_HEADERS.join(",") + "\n" +
       "John,Doe,john.doe@company.com,john.alt@personal.com,Senior Developer,Engineering,Company Inc,https://company.com,linkedin.com/in/johndoe,Software,California,90210,United States\n" +
       "Jane,Smith,jane.smith@enterprise.com,jane.alt@personal.com,Product Manager,Product,Enterprise Corp,https://enterprise.com,linkedin.com/in/janesmith,Technology,New York,10001,United States";
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -145,7 +145,7 @@ const DataIntegrationPanel: React.FC<DataIntegrationPanelProps> = ({ campaignId,
 
   return (
     <div className="p-6 space-y-8 animate-fade-in text-slate-700">
-      
+
       {/* Top section: Intro and Download */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-slate-50 p-6 rounded-2xl border border-slate-200/60 shadow-sm">
         <div>
@@ -162,12 +162,12 @@ const DataIntegrationPanel: React.FC<DataIntegrationPanelProps> = ({ campaignId,
           className="px-4 py-2.5 bg-white hover:bg-slate-50 text-[#51A2C3] hover:text-[#3F93B5] font-semibold text-xs rounded-xl border border-slate-200 shadow-sm transition-all flex items-center gap-2 shrink-0"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M7 10l5 5m0 0l5-5m-5 5V3"/>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M7 10l5 5m0 0l5-5m-5 5V3" />
           </svg>
           Download Template
         </button>
       </div>
-      
+
       {/* Visual Schema Data Preview */}
       <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-200/60">
         <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
@@ -211,7 +211,7 @@ const DataIntegrationPanel: React.FC<DataIntegrationPanelProps> = ({ campaignId,
 
       {/* Grid of upload & list of fields */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
+
         {/* Left Column: 13 Required Fields (5 cols) */}
         <div className="lg:col-span-5 bg-slate-50/50 border border-slate-200/60 rounded-2xl p-6">
           <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Required Column Headers</h5>
@@ -237,21 +237,20 @@ const DataIntegrationPanel: React.FC<DataIntegrationPanelProps> = ({ campaignId,
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-3xl p-10 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-4 min-h-[280px] relative overflow-hidden group ${
-              isDragOver 
-                ? 'border-blue-400 bg-blue-500/5 shadow-2xl shadow-blue-500/5 scale-[1.01]' 
-                : 'border-slate-300 bg-slate-50/10 hover:border-slate-400 hover:bg-slate-100/20'
-            }`}
+            className={`border-2 border-dashed rounded-3xl p-10 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-4 min-h-[280px] relative overflow-hidden group ${isDragOver
+              ? 'border-blue-400 bg-blue-500/5 shadow-2xl shadow-blue-500/5 scale-[1.01]'
+              : 'border-slate-300 bg-slate-50/10 hover:border-slate-400 hover:bg-slate-100/20'
+              }`}
           >
             {/* Visual glow element */}
             <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
             <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-[#51A2C3] group-hover:scale-110 transition-transform shadow-sm">
               <svg className="w-8 h-8 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
             </div>
-            
+
             <div>
               <p className="text-base font-bold text-slate-800">
                 {file ? file.name : "Drag & drop your Excel/CSV here"}
@@ -282,11 +281,10 @@ const DataIntegrationPanel: React.FC<DataIntegrationPanelProps> = ({ campaignId,
           {/* Action and feedback */}
           <div className="space-y-4">
             {status && (
-              <div className={`p-4 rounded-xl border text-sm flex gap-3 animate-fade-in ${
-                status.type === 'success' 
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-                  : 'bg-rose-50 border-rose-200 text-rose-800'
-              }`}>
+              <div className={`p-4 rounded-xl border text-sm flex gap-3 animate-fade-in ${status.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}>
                 <span className="text-base shrink-0">{status.type === 'success' ? '🚀' : '⚠️'}</span>
                 <div className="whitespace-pre-wrap leading-relaxed">{status.message}</div>
               </div>
@@ -375,9 +373,9 @@ const DataIntegrationPanel: React.FC<DataIntegrationPanelProps> = ({ campaignId,
                     <td className="px-5 py-3.5">
                       <div className="font-medium text-slate-700">{lead.company_name || '—'}</div>
                       {lead.website && (
-                        <a 
-                          href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`} 
-                          target="_blank" 
+                        <a
+                          href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}
+                          target="_blank"
                           rel="noreferrer"
                           className="text-[10px] text-[#51A2C3] hover:underline mt-0.5 block truncate max-w-[150px]"
                         >
@@ -398,14 +396,14 @@ const DataIntegrationPanel: React.FC<DataIntegrationPanelProps> = ({ campaignId,
                     </td>
                     <td className="px-5 py-3.5">
                       {lead.linkedin_id ? (
-                        <a 
-                          href={lead.linkedin_id.startsWith('http') ? lead.linkedin_id : `https://${lead.linkedin_id}`} 
-                          target="_blank" 
+                        <a
+                          href={lead.linkedin_id.startsWith('http') ? lead.linkedin_id : `https://${lead.linkedin_id}`}
+                          target="_blank"
                           rel="noreferrer"
                           className="text-[#51A2C3] hover:text-[#3f93b5] hover:underline flex items-center gap-1 font-semibold"
                         >
                           <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/>
+                            <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z" />
                           </svg>
                           Profile
                         </a>

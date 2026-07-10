@@ -1106,7 +1106,7 @@ const CampaignsPage: React.FC = () => {
               {/* Active Tab Panel Content */}
               {activePanel && selectedId && (
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                  {activePanel === 'inbox' && <InboxPanel campaignId={selectedId}/>}
+                  {activePanel === 'inbox' && <InboxPanel campaignId={selectedId} projectId={selectedProjectId}/>}
                   {activePanel === 'data-integration' && (
                     <DataIntegrationPanel
                       campaignId={selectedId}

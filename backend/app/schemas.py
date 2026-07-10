@@ -90,6 +90,7 @@ class RecipientBase(BaseModel):
     country: Optional[str] = None
     region: Optional[str] = None
     status: str = "pending"
+    response_category: Optional[str] = None  # 'lead' | 'hot' | 'cold' | 'negative' | 'bounce'
 
 
 class RecipientCreate(RecipientBase):
@@ -208,6 +209,7 @@ class InboxMessage(BaseModel):
     date: str
     snippet: str
     body: str = ""
+    response_category: Optional[str] = None  # pre-classified: 'lead' | 'hot' | 'cold' | 'negative' | 'bounce'
 
 
 class InboxResponse(BaseModel):
@@ -265,3 +267,48 @@ class ProjectMemberOut(BaseModel):
     @classmethod
     def coerce_object_id(cls, v):
         return str(v)
+
+
+# ─── DNC Schemas ──────────────────────────────────────────────────────────────
+
+class DncEntryCreate(BaseModel):
+    email: str
+    reason: str  # 'lead' | 'hot' | 'cold' | 'negative' | 'bounce'
+    source_campaign_id: Optional[str] = None
+    project_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class DncEntryOut(BaseModel):
+    id: str
+    email: str
+    reason: str
+    source_campaign_id: Optional[str] = None
+    project_id: Optional[str] = None
+    notes: Optional[str] = None
+    classified_by: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
+
+    @field_validator('id', mode='before')
+    @classmethod
+    def coerce_object_id(cls, v):
+        return str(v)
+
+
+# ─── Campaign Analytics Detail ───────────────────────────────────────────────
+
+class CampaignAnalyticsDetail(BaseModel):
+    total_recipients: int = 0
+    total_sent: int = 0
+    total_pending: int = 0
+    total_bounced: int = 0
+    total_responded: int = 0
+    leads: int = 0
+    hot: int = 0
+    cold: int = 0
+    negative: int = 0
+    bounce_classified: int = 0
+    delivery_rate: float = 0.0
+    response_rate: float = 0.0

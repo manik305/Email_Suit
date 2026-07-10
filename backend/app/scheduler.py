@@ -376,6 +376,28 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
         # Combine fresh contacts and follow-ups due
         combined_recipients = fresh_recipients + due_follow_ups
 
+        # ── DNC Filter: Skip any recipients on the project-scoped DNC list ──
+        if campaign.project_id:
+            from .models import DncEntry
+            dnc_entries = await DncEntry.find(project_id=str(campaign.project_id)).to_list()
+            dnc_emails = {entry.email.lower() for entry in dnc_entries}
+            pre_filter_count = len(combined_recipients)
+            combined_recipients = [
+                r for r in combined_recipients
+                if r.email.lower() not in dnc_emails and not r.response_category
+            ]
+            skipped = pre_filter_count - len(combined_recipients)
+            if skipped > 0:
+                logger.info(
+                    "Campaign %s: Skipped %d DNC-listed recipients.",
+                    campaign.id, skipped
+                )
+        else:
+            # Even without project, skip recipients with response_category set
+            combined_recipients = [
+                r for r in combined_recipients if not r.response_category
+            ]
+
         if not combined_recipients:
             logger.info("Campaign %s: no pending or due recipients, rescheduling next run.", campaign.id)
             updates = {}

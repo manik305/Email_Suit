@@ -37,6 +37,7 @@ class Recipient(PostgresModel):
     open_count: int = 0
     click_count: int = 0
     send_at: Optional[datetime] = None
+    response_category: Optional[str] = None  # 'lead' | 'hot' | 'cold' | 'negative' | 'bounce'
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Backwards compatibility properties for designation/pin_code/linkedin_id
@@ -464,4 +465,20 @@ class RecipientEvent(PostgresModel):
 
     class Settings:
         name = "recipient_events"
+
+
+# ─── DncEntry (Do Not Contact List) ───────────────────────────────────────────
+
+class DncEntry(PostgresModel):
+    """Project-scoped DNC blacklist entry. One email per project."""
+    email: str
+    reason: str                            # 'lead' | 'hot' | 'cold' | 'negative' | 'bounce'
+    source_campaign_id: Optional[str] = None
+    project_id: Optional[str] = None
+    notes: Optional[str] = None
+    classified_by: Optional[str] = None    # user email who classified
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "dnc_list"
 

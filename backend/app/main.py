@@ -12,7 +12,7 @@ if sys.platform == 'win32':
 
 from app.database import init_db, close_db
 from app.scheduler import start_scheduler, stop_scheduler
-from app.api import auth, campaign, data, config, chat, meetings, tracking, project
+from app.api import auth, campaign, data, config, chat, meetings, tracking, project, dnc
 
 
 @asynccontextmanager
@@ -48,6 +48,7 @@ app.include_router(chat.router,     prefix="/api/v1/chat",       tags=["Chat / A
 app.include_router(meetings.router, prefix="/api/v1/meetings",   tags=["Meeting Scheduler"])
 app.include_router(tracking.router, prefix="/api/track",        tags=["Email Tracking"])
 app.include_router(project.router,  prefix="/api/v1/projects",     tags=["Project Management"])
+app.include_router(dnc.router,      prefix="/api/v1/dnc",           tags=["DNC List"])
 
 
 # Serve frontend static files

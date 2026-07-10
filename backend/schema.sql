@@ -128,6 +128,10 @@ CREATE TABLE IF NOT EXISTS public.recipients (
 CREATE INDEX IF NOT EXISTS idx_recipients_email ON public.recipients(email);
 CREATE INDEX IF NOT EXISTS idx_recipients_campaign_id ON public.recipients(campaign_id);
 
+-- Add response_category column to recipients (for DNC classification)
+ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS response_category VARCHAR(50);
+-- values: 'lead' | 'hot' | 'cold' | 'negative' | 'bounce' | null
+
 -- 5. Recipient Tracking Events
 CREATE TABLE IF NOT EXISTS public.recipient_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -171,6 +175,21 @@ CREATE TABLE IF NOT EXISTS public.meetings (
     meet_link TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- 7. DNC (Do Not Contact) List - Project-Scoped
+CREATE TABLE IF NOT EXISTS public.dnc_list (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) NOT NULL,
+    reason VARCHAR(50) NOT NULL,           -- 'lead' | 'hot' | 'cold' | 'negative' | 'bounce'
+    source_campaign_id UUID REFERENCES public.campaigns(id) ON DELETE SET NULL,
+    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
+    notes TEXT,
+    classified_by VARCHAR(255),            -- user email who classified
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(email, project_id)              -- one email can only appear once per project
+);
+CREATE INDEX IF NOT EXISTS idx_dnc_email ON public.dnc_list(email);
+CREATE INDEX IF NOT EXISTS idx_dnc_project ON public.dnc_list(project_id);
 
 -- Setup automatic profile creation for Supabase auth sign-ups
 CREATE OR REPLACE FUNCTION public.handle_new_user()

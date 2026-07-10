@@ -380,18 +380,96 @@ async def get_campaign_inbox(
                     f"Subject: {campaign.subject or '(no subject)'}\n"
                     f"Sent: {date_str}\n"
                     f"To: {r.name or ''} <{r.email}>"
-                )
+                ),
+                response_category=r.response_category or "bounce",
             )
             # Prepend so failures appear prominently at the top
             messages.insert(0, bounce_msg)
     except Exception as e:
         logger.error("Error generating bounced inbox messages: %s", e)
-        
+
+    # 3. Auto-detect bounce messages from IMAP and tag response_category
+    for msg in messages:
+        if msg.response_category:
+            continue  # Already classified
+        is_bounce = (
+            "delivery status" in msg.subject.lower()
+            or "undelivered" in msg.subject.lower()
+            or "undeliverable" in msg.subject.lower()
+            or "mailer-daemon" in msg.from_addr.lower()
+            or "postmaster" in msg.from_addr.lower()
+        )
+        if is_bounce:
+            msg.response_category = "bounce"
+
+    # 4. Check DNC status for each message sender and enrich with existing classification
+    if campaign.project_id:
+        for msg in messages:
+            if msg.response_category:
+                continue  # Already tagged (bounce or pre-classified)
+            # Extract email from from_addr (may be "Name <email>" format)
+            sender_email = msg.from_addr
+            if "<" in sender_email and ">" in sender_email:
+                sender_email = sender_email.split("<")[1].split(">")[0].strip()
+            sender_email = sender_email.strip().lower()
+            # Check DNC
+            dnc_entry = await models.DncEntry.find_one(
+                email=sender_email,
+                project_id=campaign.project_id,
+            )
+            if dnc_entry:
+                msg.response_category = dnc_entry.reason
+
     return schemas.InboxResponse(
         campaign_id=campaign_id,
         mailbox=mailbox,
         messages=messages,
         error=error_msg,
+    )
+
+
+# ─── Analytics Detail (with DNC response breakdown) ─────────────────────────
+
+@router.get("/{campaign_id}/analytics-detail", response_model=schemas.CampaignAnalyticsDetail)
+async def get_analytics_detail(
+    campaign_id: str,
+    current_user_email: str = Depends(get_current_user_email),
+):
+    """
+    Detailed analytics for a campaign including response category breakdowns.
+    """
+    campaign = await _get_campaign_or_404(campaign_id)
+    recipients = await models.Recipient.find(campaign_id=campaign_id).to_list()
+
+    total = len(recipients)
+    sent = len([r for r in recipients if r.status in ("sent", "replied", "bounced")])
+    pending = len([r for r in recipients if r.status == "pending"])
+    bounced = len([r for r in recipients if r.status == "bounced"])
+
+    # Response category counts
+    leads = len([r for r in recipients if r.response_category == "lead"])
+    hot = len([r for r in recipients if r.response_category == "hot"])
+    cold = len([r for r in recipients if r.response_category == "cold"])
+    negative = len([r for r in recipients if r.response_category == "negative"])
+    bounce_classified = len([r for r in recipients if r.response_category == "bounce"])
+    total_responded = leads + hot + cold + negative + bounce_classified
+
+    delivery_rate = round((sent / total * 100), 1) if total > 0 else 0.0
+    response_rate = round((total_responded / sent * 100), 1) if sent > 0 else 0.0
+
+    return schemas.CampaignAnalyticsDetail(
+        total_recipients=total,
+        total_sent=sent,
+        total_pending=pending,
+        total_bounced=bounced,
+        total_responded=total_responded,
+        leads=leads,
+        hot=hot,
+        cold=cold,
+        negative=negative,
+        bounce_classified=bounce_classified,
+        delivery_rate=delivery_rate,
+        response_rate=response_rate,
     )
 
 
