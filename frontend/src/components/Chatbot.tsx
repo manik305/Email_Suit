@@ -15,8 +15,7 @@ const LLM_MODELS = [
   { label: 'Llama 4 Scout', value: 'llama-4-scout-17b-16e-instruct' },
 ];
 
-const isLocalDev = window.location.port === '5173' || window.location.port === '5174';
-const API_BASE = isLocalDev ? 'http://localhost:8000/api/v1' : '/api/v1';
+import { API_BASE_URL } from '../context/AppContext';
 
 export const Chatbot: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -152,7 +151,7 @@ export const Chatbot: React.FC = () => {
 
     // 2. Standard Server completions fallback
     try {
-      const response = await fetch(`${API_BASE}/chat/completions`, {
+      const response = await fetch(`${API_BASE_URL}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -182,7 +181,7 @@ export const Chatbot: React.FC = () => {
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
-        text: `⚠️ Could not reach the backend (${API_BASE}). Make sure the FastAPI server is running with: uvicorn app.main:app --reload`,
+        text: `⚠️ Could not reach the backend (${API_BASE_URL}). Make sure the FastAPI server is running with: uvicorn app.main:app --reload`,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages(prev => [...prev, errorMsg]);
