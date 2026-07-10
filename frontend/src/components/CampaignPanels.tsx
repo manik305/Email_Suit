@@ -148,7 +148,7 @@ const ClassifyModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
         className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
         onClick={e => e.stopPropagation()}
@@ -254,14 +254,13 @@ const InboxPanel: React.FC<{ campaignId: string; projectId?: string }> = ({ camp
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
     
-    fetch(`${API_BASE_URL}/campaigns/${campaignId}/inbox`, { headers })
+    fetch(`${API_BASE_URL}/campaigns/${campaignId}/inbox?limit=100`, { headers })
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(d => {
         if (d.error) {
           setErr(d.error);
-        } else {
-          setMsgs(d.messages ?? []);
         }
+        setMsgs(d.messages ?? []);
         setLoading(false);
       })
       .catch(e => { setErr(`Failed to load inbox (${e}). Check IMAP config.`); setLoading(false); });
@@ -291,30 +290,7 @@ const InboxPanel: React.FC<{ campaignId: string; projectId?: string }> = ({ camp
     </div>
   );
 
-  if (err) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-2xl p-5 space-y-2 max-w-xl mx-auto my-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">⚠️</span>
-          <h4 className="font-bold text-red-800 text-sm">IMAP Connection Failure</h4>
-        </div>
-        <p className="text-xs text-red-700 leading-relaxed">
-          The system was unable to establish a secure IMAP connection to retrieve the inbox messages:
-        </p>
-        <div className="bg-white p-3 rounded-xl border border-red-100 font-mono text-xs text-red-900 overflow-x-auto max-w-full">
-          {err}
-        </div>
-        <div className="text-[11px] text-red-600 space-y-1 mt-2">
-          <p className="font-bold text-red-700">Troubleshooting Recommendations:</p>
-          <ul className="list-disc pl-4 space-y-0.5">
-            <li>Verify that <strong>IMAP access is enabled</strong> in your email provider settings.</li>
-            <li>For Gmail/G Suite: ensure you use a <strong>16-character App Password</strong> rather than your standard account password.</li>
-            <li>For Custom IMAP: double check host, port, and security settings.</li>
-          </ul>
-        </div>
-      </div>
-    );
-  }
+  // We no longer return early if there's an error. We want to show the error banner AND any loaded messages (e.g. bounces).
 
   if (!msgs.length) return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -409,9 +385,31 @@ const InboxPanel: React.FC<{ campaignId: string; projectId?: string }> = ({ camp
 
   // ─── Message List View ───────────────────────────────────────────────
   return (
-    <div className="bg-white rounded-xl overflow-hidden">
-      {/* Header */}
-      <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+    <div className="flex flex-col gap-4">
+      {err && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm relative">
+          <button 
+            onClick={() => setErr('')} 
+            className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-red-400 hover:text-red-600 hover:bg-red-100"
+          >
+            ✕
+          </button>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-base">⚠️</span>
+            <h4 className="font-bold text-red-800 text-xs">IMAP Connection Failure</h4>
+          </div>
+          <p className="text-[11px] text-red-700 mb-2 leading-relaxed max-w-[90%]">
+            We couldn't connect to the IMAP server. System bounces are still visible, but normal replies won't load until this is fixed.
+          </p>
+          <div className="bg-white p-2 rounded-lg border border-red-100 font-mono text-[10px] text-red-900 overflow-x-auto">
+            {err}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl overflow-hidden shadow-sm">
+        {/* Header */}
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -468,6 +466,7 @@ const InboxPanel: React.FC<{ campaignId: string; projectId?: string }> = ({ camp
           );
         })}
       </div>
+    </div>
     </div>
   );
 };

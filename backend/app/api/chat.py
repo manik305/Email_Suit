@@ -116,7 +116,8 @@ async def generate_email_draft(req: EmailDraftRequest):
     system_prompt = (
         "You are an expert B2B email copywriter. "
         "Write concise, high-converting outreach emails. "
-        "Always personalise with {name} and {company} tokens so they can be substituted later. "
+        "Always personalise with {{first_name}} and {{company}} tokens so they can be substituted later. "
+        "If a subject line is requested, ensure the subject line also uses the {{first_name}} or {{company}} tokens. "
         "Keep the body under 150 words. No emojis unless tone is casual."
     )
 
@@ -132,13 +133,13 @@ async def generate_email_draft(req: EmailDraftRequest):
 
     if not _is_key_configured():
         # Structured template fallback
-        subject = f"Quick question about your {req.target_segment} strategy"
+        subject = f"{{first_name}}, a quick question about your {req.target_segment} strategy"
         body = (
-            f"Hi {{name}},\n\n"
+            f"Hi {{first_name}},\n\n"
             f"I came across your profile and wanted to reach out regarding "
             f"{req.product_or_service or 'our solution'}.\n\n"
             f"Many {req.target_segment} teams are facing challenges with growth — "
-            f"we help solve that.\n\n"
+            f"we help solve that at {{company}}.\n\n"
             f"Would you be open to a quick 15-minute chat this week?\n\n"
             f"Best,\n{req.sender_name or 'The Team'}"
         )

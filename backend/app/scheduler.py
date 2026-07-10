@@ -26,36 +26,45 @@ _scheduler: AsyncIOScheduler | None = None
 
 
 def calculate_next_send_at(current_send_at_str: Optional[str], schedule: str, tz_name: Optional[str], target_region: str = "US") -> Optional[str]:
-    """Calculate the next send_at time. For Daily schedules, automatically schedules for 10:00 AM IST (2:00 AM IST for APAC)."""
+    """Calculate the next send_at time, preserving the local hour/minute in the campaign's timezone."""
     if not schedule or schedule == "Once":
         return None
         
     now = datetime.now(timezone.utc)
     
+    try:
+        tz = ZoneInfo(tz_name) if tz_name else ZoneInfo("America/New_York")
+    except Exception:
+        tz = ZoneInfo("America/New_York")
+        
+    if current_send_at_str:
+        try:
+            current_dt = datetime.fromisoformat(current_send_at_str.replace("Z", "+00:00")).astimezone(tz)
+            target_hour = current_dt.hour
+            target_minute = current_dt.minute
+        except Exception:
+            target_hour = 9
+            target_minute = 0
+    else:
+        target_hour = 9
+        target_minute = 0
+        
+    local_now = now.astimezone(tz)
+    
     if schedule == "Daily":
-        is_apac = (target_region == "APAC") or (tz_name and "Australia" in tz_name) or (tz_name and any(zone in tz_name for zone in ["Tokyo", "Seoul", "Singapore", "Hong_Kong", "Taipei", "Manila", "Kuala_Lumpur", "Shanghai", "Jakarta", "Bangkok"]))
-        if is_apac:
-            # 2:00 AM IST -> 20:30 UTC of previous day relative to local date
-            target_time = now.replace(hour=20, minute=30, second=0, microsecond=0)
-            if now >= target_time:
-                target_time += timedelta(days=1)
-        else:
-            # 10:00 AM IST -> 04:30 UTC
-            target_time = now.replace(hour=4, minute=30, second=0, microsecond=0)
-            if now >= target_time:
-                target_time += timedelta(days=1)
+        target_time = local_now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        if local_now >= target_time:
+            target_time += timedelta(days=1)
             
     elif schedule == "Weekly":
-        try:
-            target_time = datetime.fromisoformat(current_send_at_str.replace("Z", "+00:00")) + timedelta(days=7)
-        except Exception:
-            target_time = now + timedelta(days=7)
+        target_time = local_now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        if local_now >= target_time:
+            target_time += timedelta(days=7)
             
     elif schedule == "Monthly":
-        try:
-            target_time = datetime.fromisoformat(current_send_at_str.replace("Z", "+00:00")) + timedelta(days=30)
-        except Exception:
-            target_time = now + timedelta(days=30)
+        target_time = local_now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        if local_now >= target_time:
+            target_time += timedelta(days=30)
     else:
         return None
 
@@ -63,7 +72,7 @@ def calculate_next_send_at(current_send_at_str: Optional[str], schedule: str, tz
     while target_time.weekday() >= 5:
         target_time += timedelta(days=1)
 
-    return target_time.isoformat()
+    return target_time.astimezone(timezone.utc).isoformat()
 
 
 def calculate_next_follow_up(campaign, days: int = 1) -> datetime:

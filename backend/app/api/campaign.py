@@ -332,7 +332,7 @@ async def send_campaign(
 async def get_campaign_inbox(
     campaign_id: str,
     mailbox: str = Query(default="INBOX"),
-    limit: int = Query(default=20, le=100),
+    limit: int = Query(default=100, le=500),
 ):
     """
     Fetch the most recent messages from the IMAP mailbox of the campaign's
