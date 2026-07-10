@@ -18,6 +18,10 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
+from .activity_logs import log_activity
+import logging
+data_logger = logging.getLogger(__name__)
+
 
 # ─── Upload ───────────────────────────────────────────────────────────────────
 
@@ -170,11 +174,26 @@ async def upload_data(file: UploadFile = File(...), campaign_id: Optional[str] =
                 }})
                 count += 1
                 
+        await log_activity(
+            action="data_uploaded",
+            category="data",
+            summary=f"File '{file.filename}' uploaded with {count} recipients" + (f" to campaign {campaign_id}" if campaign_id else ""),
+            campaign_id=campaign_id,
+            details={"filename": file.filename, "rows_added": count, "campaign_id": campaign_id},
+        )
         return {"status": "success", "rows_added": count}
 
     except HTTPException:
         raise
     except Exception as e:
+        await log_activity(
+            action="data_upload_failed",
+            category="error",
+            summary=f"File upload '{file.filename}' failed: {str(e)}",
+            severity="error",
+            campaign_id=campaign_id,
+            details={"filename": file.filename, "error": str(e)},
+        )
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
 
 

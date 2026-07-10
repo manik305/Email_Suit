@@ -191,6 +191,26 @@ CREATE TABLE IF NOT EXISTS public.dnc_list (
 CREATE INDEX IF NOT EXISTS idx_dnc_email ON public.dnc_list(email);
 CREATE INDEX IF NOT EXISTS idx_dnc_project ON public.dnc_list(project_id);
 
+-- 8. Activity Logs (Admin Audit Trail)
+CREATE TABLE IF NOT EXISTS public.activity_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
+    campaign_id UUID REFERENCES public.campaigns(id) ON DELETE SET NULL,
+    user_email VARCHAR(255),
+    action VARCHAR(100) NOT NULL,        -- 'campaign_created', 'campaign_updated', 'data_uploaded', etc.
+    category VARCHAR(50) NOT NULL,       -- 'campaign' | 'data' | 'email' | 'config' | 'auth' | 'system' | 'error'
+    severity VARCHAR(20) DEFAULT 'info', -- 'info' | 'warning' | 'error' | 'critical'
+    summary TEXT NOT NULL,               -- Human-readable description
+    details JSONB DEFAULT '{}',          -- Structured metadata (counts, IDs, error messages)
+    ip_address VARCHAR(100),
+    user_agent TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_project ON public.activity_logs(project_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_campaign ON public.activity_logs(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_category ON public.activity_logs(category);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON public.activity_logs(created_at DESC);
+
 -- Setup automatic profile creation for Supabase auth sign-ups
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$

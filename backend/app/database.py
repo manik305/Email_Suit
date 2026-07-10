@@ -146,6 +146,26 @@ async def init_db() -> None:
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_industries JSONB DEFAULT '[]';
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_regions JSONB DEFAULT '[]';
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_active BOOLEAN DEFAULT FALSE;
+
+                    -- Activity Logs (Admin Audit Trail)
+                    CREATE TABLE IF NOT EXISTS public.activity_logs (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
+                        campaign_id UUID REFERENCES public.campaigns(id) ON DELETE SET NULL,
+                        user_email VARCHAR(255),
+                        action VARCHAR(100) NOT NULL,
+                        category VARCHAR(50) NOT NULL,
+                        severity VARCHAR(20) DEFAULT 'info',
+                        summary TEXT NOT NULL,
+                        details JSONB DEFAULT '{}',
+                        ip_address VARCHAR(100),
+                        user_agent TEXT,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_activity_logs_project ON public.activity_logs(project_id);
+                    CREATE INDEX IF NOT EXISTS idx_activity_logs_campaign ON public.activity_logs(campaign_id);
+                    CREATE INDEX IF NOT EXISTS idx_activity_logs_category ON public.activity_logs(category);
+                    CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON public.activity_logs(created_at DESC);
                 """)
 
                 # Ensure default project exists for legacy compatibility

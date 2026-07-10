@@ -482,3 +482,23 @@ class DncEntry(PostgresModel):
     class Settings:
         name = "dnc_list"
 
+
+# ─── ActivityLog (Admin Audit Trail) ──────────────────────────────────────────
+
+class ActivityLog(PostgresModel):
+    """Records every significant action for campaign-level auditing."""
+    project_id: Optional[str] = None
+    campaign_id: Optional[str] = None
+    user_email: Optional[str] = None
+    action: str                                    # e.g. 'campaign_created', 'data_uploaded'
+    category: str                                  # 'campaign' | 'data' | 'email' | 'config' | 'auth' | 'system' | 'error'
+    severity: str = "info"                         # 'info' | 'warning' | 'error' | 'critical'
+    summary: str                                   # Human-readable description
+    details: Optional[Dict[str, Any]] = {}         # Structured metadata
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "activity_logs"
+

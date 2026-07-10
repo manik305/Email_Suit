@@ -26,6 +26,7 @@ def verify_pwd(password: str, hashed_password: str) -> bool:
         return False
 
 from app.models import User
+from .activity_logs import log_activity
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -433,6 +434,13 @@ async def register_verify(payload: RegisterVerifyRequest):
     await user.save()
 
     logger.info("✅ User %s verified successfully", email)
+    await log_activity(
+        action="user_registered",
+        category="auth",
+        summary=f"New user '{email}' registered and verified",
+        user_email=email,
+        details={"role": user.role},
+    )
     return {
         "status": "success",
         "message": "Account activated successfully! You may now sign in."
@@ -530,6 +538,13 @@ async def login_verify(payload: LoginVerifyRequest):
     token = create_access_token({"sub": user.email, "role": user.role})
 
     logger.info("🔑 User %s logged in successfully via dual-factor", email)
+    await log_activity(
+        action="user_login",
+        category="auth",
+        summary=f"User '{email}' logged in successfully",
+        user_email=email,
+        details={"role": user.role},
+    )
     return {
         "access_token": token,
         "token_type": "bearer",

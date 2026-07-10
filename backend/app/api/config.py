@@ -21,6 +21,7 @@ from app.api.auth import get_current_user_email
 
 from .. import models, schemas
 from ..email_service import send_email
+from .activity_logs import log_activity
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -150,6 +151,14 @@ async def create_email_config(
     )
     await db_config.insert()
     logger.info("EmailConfig created: %s (%s)", db_config.name, db_config.sender_address)
+    await log_activity(
+        action="config_created",
+        category="config",
+        summary=f"Email config '{db_config.name}' ({db_config.sender_address}) created",
+        project_id=project_id,
+        user_email=current_user_email,
+        details={"config_name": db_config.name, "sender_address": db_config.sender_address, "provider": db_config.provider},
+    )
     return _mask(db_config)
 
 
@@ -191,6 +200,14 @@ async def update_email_config(config_id: str, payload: schemas.EmailConfigUpdate
 
     if updates:
         await cfg.update({"$set": updates})
+        await log_activity(
+            action="config_updated",
+            category="config",
+            summary=f"Email config '{cfg.name}' updated (fields: {', '.join(updates.keys())})",
+            project_id=cfg.project_id,
+            user_email=current_user_email,
+            details={"updated_fields": list(updates.keys())},
+        )
 
     return _mask(cfg)
 
@@ -198,7 +215,18 @@ async def update_email_config(config_id: str, payload: schemas.EmailConfigUpdate
 @router.delete("/{config_id}", status_code=204)
 async def delete_email_config(config_id: str, current_user_email: str = Depends(get_current_user_email)):
     cfg = await _assert_config_access(config_id, current_user_email)
+    config_name = cfg.name
+    project_id = cfg.project_id
     await cfg.delete()
+    await log_activity(
+        action="config_deleted",
+        category="config",
+        summary=f"Email config '{config_name}' deleted",
+        project_id=project_id,
+        user_email=current_user_email,
+        severity="warning",
+        details={"config_name": config_name, "config_id": config_id},
+    )
 
 
 @router.post("/{config_id}/test")

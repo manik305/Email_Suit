@@ -6,6 +6,7 @@ import CampaignsPage from './pages/Campaigns';
 import DataFolderPage from './pages/DataFolder';
 import LoginPage from './pages/Login';
 import MeetingScheduler from './pages/MeetingScheduler';
+import ActivityLogsPage from './pages/ActivityLogs';
 import ProjectHubPage from './pages/ProjectHub';
 import { Chatbot } from './components/Chatbot';
 import { useAppContext, API_BASE_URL } from './context/AppContext';
@@ -32,6 +33,11 @@ const navIcons: Record<string, React.ReactNode> = {
   '/meetings': (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  ),
+  '/activity-logs': (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
     </svg>
   ),
 };
@@ -69,7 +75,14 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     { name: 'Campaigns',        path: '/campaigns' },
     { name: 'Data Management',  path: '/data-folder' },
     { name: 'Meetings',         path: '/meetings' },
+    // Admin-only nav items are conditionally appended below
   ];
+
+  // Conditionally add Activity Logs for admin users
+  const authLevel = localStorage.getItem('auth_level');
+  if (authLevel === 'admin') {
+    navItems.push({ name: 'Activity Logs', path: '/activity-logs' });
+  }
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -308,6 +321,7 @@ const App: React.FC = () => {
           <Route path="/campaigns"    element={<ProtectedRoute><Layout><CampaignsPage /></Layout></ProtectedRoute>} />
           <Route path="/data-folder"  element={<ProtectedRoute><Layout><DataFolderPage /></Layout></ProtectedRoute>} />
           <Route path="/meetings"     element={<ProtectedRoute><Layout><MeetingScheduler /></Layout></ProtectedRoute>} />
+          <Route path="/activity-logs" element={<ProtectedRoute><Layout><ActivityLogsPage /></Layout></ProtectedRoute>} />
           <Route path="/projects"     element={<ProtectedRoute><ProjectHubPage /></ProtectedRoute>} />
         </Routes>
       </SessionWrapper>

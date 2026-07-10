@@ -23,6 +23,7 @@ import io
 from .. import models, schemas
 from ..email_service import fetch_inbox, send_email
 from .auth import get_current_user_email
+from .activity_logs import log_activity
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -185,6 +186,15 @@ async def create_campaign(payload: schemas.CampaignCreate, current_user_email: s
     )
     await campaign.insert()
     logger.info("Campaign created: %s (%s) by %s", campaign.name, campaign.id, current_user_email)
+    await log_activity(
+        action="campaign_created",
+        category="campaign",
+        summary=f"Campaign '{campaign.name}' created",
+        project_id=project_id,
+        campaign_id=campaign.id,
+        user_email=current_user_email,
+        details={"campaign_name": campaign.name, "schedule": campaign.schedule, "status": campaign.status},
+    )
     return campaign
 
 
@@ -276,17 +286,40 @@ async def update_campaign(campaign_id: str, payload: schemas.CampaignUpdate, cur
         elif payload.send_at is not None or payload.mails_per_minute is not None:
             from app.scheduler import update_recipient_send_times
             await update_recipient_send_times(campaign_id)
+        severity = "warning" if payload.status == "paused" else "info"
+        await log_activity(
+            action="campaign_updated",
+            category="campaign",
+            summary=f"Campaign '{campaign.name}' updated (fields: {', '.join(update_data.keys())})",
+            project_id=campaign.project_id,
+            campaign_id=campaign_id,
+            user_email=current_user_email,
+            severity=severity,
+            details={"updated_fields": list(update_data.keys()), "status": campaign.status},
+        )
     return campaign
 
 
 @router.delete("/{campaign_id}", status_code=204)
 async def delete_campaign(campaign_id: str, current_user_email: str = Depends(get_current_user_email)):
     campaign = await _assert_campaign_access(campaign_id, current_user_email)
+    campaign_name = campaign.name
+    project_id = campaign.project_id
     # Purge associated recipients
     recipients = await models.Recipient.find(campaign_id=campaign_id).to_list()
     for r in recipients:
         await r.delete()
     await campaign.delete()
+    await log_activity(
+        action="campaign_deleted",
+        category="campaign",
+        summary=f"Campaign '{campaign_name}' deleted along with {len(recipients)} recipients",
+        project_id=project_id,
+        campaign_id=campaign_id,
+        user_email=current_user_email,
+        severity="warning",
+        details={"campaign_name": campaign_name, "recipients_purged": len(recipients)},
+    )
 
 
 # ─── Attach email config ──────────────────────────────────────────────────────
@@ -323,11 +356,22 @@ async def send_campaign(
     Fire SMTP for all *pending* or active follow-up recipients of this campaign using the new rate-throttled queue processor.
     """
     from app.scheduler import process_campaign_queue
+    campaign = await models.Campaign.get(campaign_id)
     res = await process_campaign_queue(campaign_id, limit=limit)
     if res.get("status") == "not_found":
         raise HTTPException(status_code=404, detail="Campaign not found")
     if res.get("status") == "already_running":
         raise HTTPException(status_code=409, detail="Campaign is already processing a dispatch queue.")
+    severity = "error" if res.get("failed", 0) > 0 else "info"
+    await log_activity(
+        action="campaign_send_triggered",
+        category="email",
+        summary=f"Campaign '{campaign.name if campaign else campaign_id}' send triggered (sent={res.get('sent', 0)}, failed={res.get('failed', 0)})",
+        project_id=campaign.project_id if campaign else None,
+        campaign_id=campaign_id,
+        severity=severity,
+        details=res,
+    )
     return res
 
 
