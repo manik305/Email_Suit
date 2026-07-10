@@ -592,6 +592,12 @@ const CampaignsPage: React.FC = () => {
         headers,
         body: JSON.stringify({ status: newStatus }),
       });
+      if (res.status === 401) {
+        showToast('⚠️ Session expired. Please log in again.');
+        localStorage.clear();
+        window.location.href = '/';
+        return;
+      }
       if (res.ok) {
         showToast(`Campaign status updated to ${newStatus}`);
         await refreshData();
