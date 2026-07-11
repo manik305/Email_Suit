@@ -609,6 +609,7 @@ const CampaignsPage: React.FC = () => {
   const filteredCampaigns = state.campaigns.filter(c => !selectedProjectId || c.project_id === selectedProjectId);
   const filteredCampaignIds = new Set(filteredCampaigns.map(c => c.id));
   const filteredRecipients = state.recipients.filter(r => r.campaign_id && filteredCampaignIds.has(r.campaign_id));
+  const selectedCampaignRecipients = selectedId ? state.recipients.filter(r => r.campaign_id === selectedId) : [];
   const filteredEmailConfigs = state.emailConfigs.filter(cfg => !selectedProjectId || cfg.project_id === selectedProjectId);
 
   const PANELS = [
@@ -1047,14 +1048,14 @@ const CampaignsPage: React.FC = () => {
               <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl">
                 <span className="text-[10px] text-slate-400 block uppercase font-medium">Number of companies</span>
                 <span className="text-sm font-bold text-emerald-600 block mt-1">
-                  {new Set(filteredRecipients.map(r => r.company_name).filter(Boolean)).size}
+                  {new Set(selectedCampaignRecipients.map(r => r.company_name).filter(Boolean)).size}
                 </span>
               </div>
 
               <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl">
                 <span className="text-[10px] text-slate-400 block uppercase font-medium">Number of prospects</span>
                 <span className="text-sm font-bold text-emerald-600 block mt-1">
-                  {filteredRecipients.length}
+                  {selectedCampaignRecipients.length}
                 </span>
               </div>
 
@@ -1071,7 +1072,7 @@ const CampaignsPage: React.FC = () => {
               <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl">
                 <span className="text-[10px] text-slate-400 block uppercase font-medium">First contact emails</span>
                 <span className="text-sm font-bold text-emerald-600 block mt-1">
-                  {filteredRecipients.filter(r => r.status === 'sent').length}
+                  {selectedCampaignRecipients.filter(r => r.status === 'sent').length}
                 </span>
               </div>
 
