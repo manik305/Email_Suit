@@ -305,21 +305,26 @@ async def delete_campaign(campaign_id: str, current_user_email: str = Depends(ge
     campaign = await _assert_campaign_access(campaign_id, current_user_email)
     campaign_name = campaign.name
     project_id = campaign.project_id
-    # Purge associated recipients
-    recipients = await models.Recipient.find(campaign_id=campaign_id).to_list()
-    for r in recipients:
-        await r.delete()
-    await campaign.delete()
+    
+    # Get recipients count for audit details
+    recipients_count = await models.Recipient.find(campaign_id=campaign_id).count()
+    
+    # 1. Log activity BEFORE deleting the campaign so that the campaign_id exists in the database
+    # (PostgreSQL has ON DELETE SET NULL on activity_logs.campaign_id, so it will automatically
+    # set the column to NULL for this log row once the campaign is deleted).
     await log_activity(
         action="campaign_deleted",
         category="campaign",
-        summary=f"Campaign '{campaign_name}' deleted along with {len(recipients)} recipients",
+        summary=f"Campaign '{campaign_name}' deleted along with {recipients_count} recipients",
         project_id=project_id,
         campaign_id=campaign_id,
         user_email=current_user_email,
         severity="warning",
-        details={"campaign_name": campaign_name, "recipients_purged": len(recipients)},
+        details={"campaign_name": campaign_name, "recipients_purged": recipients_count},
     )
+    
+    # 2. Delete the campaign (the DB will automatically cascade delete all associated recipients)
+    await campaign.delete()
 
 
 # ─── Attach email config ──────────────────────────────────────────────────────
