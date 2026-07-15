@@ -271,7 +271,10 @@ async def is_quota_exhausted(config: Any) -> bool:
     return sent_today >= daily_limit
 
 
-async def get_available_config(campaign: Any) -> Optional[Any]:
+_active_config_locks = set()
+
+
+async def get_available_config(campaign: Any, exclude_locked: bool = True) -> Optional[Any]:
     """
     Select the best available EmailConfig from a campaign's pool.
     Priority: configs with the most quota remaining today (least sent first).
@@ -290,6 +293,9 @@ async def get_available_config(campaign: Any) -> Optional[Any]:
 
     candidates = []
     for config_id in pool:
+        # Exclude currently active SMTP config connections to prevent collisions
+        if exclude_locked and str(config_id) in _active_config_locks:
+            continue
         try:
             config = await EmailConfig.get(config_id)
             if not config or not config.is_active:
@@ -366,15 +372,38 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                 await update_recipient_send_times(campaign.id)
                 return {"sent": 0, "failed": 0, "status": "paused"}
 
-        # Select best available config from pool (quota-aware)
-        current_config = await get_available_config(campaign)
+        # Select best available config from pool (quota-aware and lock-aware)
+        current_config = await get_available_config(campaign, exclude_locked=True)
         if not current_config:
-            logger.info("Campaign %s: All email configs exhausted their daily quota.", campaign.id)
-            diag_err = "All email accounts in pool exhausted for today." if campaign.email_config_pool else "Daily quota exhausted for this account. Resumes tomorrow."
-            await campaign.update({"$set": {"status": "paused", "diagnostic_error": diag_err}})
-            await update_recipient_send_times(campaign.id)
-            return {"sent": 0, "failed": 0, "status": "paused"}
+            # Check if it was because of quota exhaustion, or if configs are just currently busy
+            has_quota_config = await get_available_config(campaign, exclude_locked=False)
+            if has_quota_config:
+                logger.info("Campaign %s: All active configs with quota are currently locked/busy. Rescheduling in 60s.", campaign.id)
+                await campaign.update({"$set": {
+                    "send_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
+                    "status": "active",
+                    "diagnostic_error": "SMTP accounts are currently busy. Retrying shortly."
+                }})
+                _active_campaign_runs.discard(campaign_id)
+                return {"sent": 0, "failed": 0, "status": "active"}
+            else:
+                logger.info("Campaign %s: All email configs exhausted their daily quota.", campaign.id)
+                diag_err = "All email accounts in pool exhausted for today." if campaign.email_config_pool else "Daily quota exhausted for this account. Resumes tomorrow."
+                # Reschedule to next day, do NOT pause
+                next_send_at = calculate_next_send_at(campaign.send_at, campaign.schedule or "Daily", campaign.timezone, campaign.target_region)
+                if not next_send_at:
+                    next_send_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+                await campaign.update({"$set": {
+                    "send_at": next_send_at,
+                    "status": "active",
+                    "diagnostic_error": diag_err
+                }})
+                await update_recipient_send_times(campaign.id)
+                _active_campaign_runs.discard(campaign_id)
+                return {"sent": 0, "failed": 0, "status": "active"}
 
+        config_id_str = str(current_config.id)
+        _active_config_locks.add(config_id_str)
         config = current_config  # Alias for template variable rendering
 
         # Load fresh contacts limit
@@ -470,9 +499,19 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
         if remaining <= 0:
             logger.info("Campaign %s: Daily quota exhausted for this account %s. Resumes tomorrow.", campaign.id, current_config.sender_address)
             diag_err = "Daily quota exhausted for this account. Resumes tomorrow."
-            await campaign.update({"$set": {"status": "paused", "diagnostic_error": diag_err}})
+            # Release lock
+            _active_config_locks.discard(config_id_str)
+            # Reschedule to next day, do NOT pause
+            next_send_at = calculate_next_send_at(campaign.send_at, campaign.schedule or "Daily", campaign.timezone, campaign.target_region)
+            if not next_send_at:
+                next_send_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+            await campaign.update({"$set": {
+                "send_at": next_send_at,
+                "status": "active",
+                "diagnostic_error": diag_err
+            }})
             await update_recipient_send_times(campaign.id)
-            return {"sent": 0, "failed": 0, "status": "paused"}
+            return {"sent": 0, "failed": 0, "status": "active"}
 
         combined_recipients = combined_recipients[:remaining]
 
@@ -493,14 +532,39 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                 if idx > 0 and idx % 10 == 0:
                     if await is_quota_exhausted(current_config):
                         session.close()
-                        next_config = await get_available_config(campaign)
+                        # Release lock on current config
+                        _active_config_locks.discard(config_id_str)
+                        
+                        next_config = await get_available_config(campaign, exclude_locked=True)
                         if not next_config:
-                            logger.info("Campaign %s: All configs exhausted mid-batch. Stopping for today.", campaign.id)
-                            diag_err = "All email accounts in pool exhausted for today." if campaign.email_config_pool else "Daily quota exhausted for this account. Resumes tomorrow."
-                            await campaign.update({"$set": {"status": "paused", "diagnostic_error": diag_err}})
-                            await update_recipient_send_times(campaign.id)
-                            break
+                            # Check if configs have quota but are just currently busy/locked
+                            has_quota_config = await get_available_config(campaign, exclude_locked=False)
+                            if has_quota_config:
+                                logger.info("Campaign %s: All configs busy during mid-batch rotation. Postponing.", campaign.id)
+                                await campaign.update({"$set": {
+                                    "send_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
+                                    "status": "active",
+                                    "diagnostic_error": "SMTP accounts are currently busy. Retrying shortly."
+                                }})
+                                await update_recipient_send_times(campaign.id)
+                                break
+                            else:
+                                logger.info("Campaign %s: All configs exhausted mid-batch. Stopping for today.", campaign.id)
+                                diag_err = "All email accounts in pool exhausted for today." if campaign.email_config_pool else "Daily quota exhausted for this account. Resumes tomorrow."
+                                # Reschedule for tomorrow, keep ACTIVE
+                                next_send_at = calculate_next_send_at(campaign.send_at, campaign.schedule or "Daily", campaign.timezone, campaign.target_region)
+                                if not next_send_at:
+                                    next_send_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+                                await campaign.update({"$set": {
+                                    "send_at": next_send_at,
+                                    "status": "active",
+                                    "diagnostic_error": diag_err
+                                }})
+                                await update_recipient_send_times(campaign.id)
+                                break
                         current_config = next_config
+                        config_id_str = str(current_config.id)
+                        _active_config_locks.add(config_id_str)
                         session = SmtpSession(current_config, batch_size=50)
                         logger.info("Campaign %s: Rotated to config %s (%s).",
                                    campaign.id, current_config.id, current_config.sender_address)
@@ -714,6 +778,8 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
 
         return {"sent": sent, "failed": failed, "errors": errors, "status": campaign.status if campaign else "deleted"}
     finally:
+        if 'config_id_str' in locals() and config_id_str in _active_config_locks:
+            _active_config_locks.discard(config_id_str)
         _active_campaign_runs.discard(campaign_id)
 
 

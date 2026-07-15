@@ -129,11 +129,7 @@ async def create_email_config(
         if not member:
             raise HTTPException(status_code=403, detail="You do not have access to this project.")
 
-    # If marked active, deactivate all existing ones for the same project first
-    if payload.is_active:
-        active_configs = await models.EmailConfig.find(project_id=project_id, is_active=True).to_list()
-        for cfg in active_configs:
-            await cfg.update({"is_active": False})
+    # Multiple configs can be active simultaneously now; no automatic deactivation.
 
     smtp_settings = models.SmtpSettings(**payload.smtp.model_dump())
     imap_settings = models.ImapSettings(**payload.imap.model_dump()) if payload.imap else None

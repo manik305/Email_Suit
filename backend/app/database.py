@@ -29,7 +29,7 @@ async def init_db() -> None:
         db_pool = await asyncpg.create_pool(
             DATABASE_URL,
             min_size=1,
-            max_size=10,
+            max_size=50,
             command_timeout=30,
             max_inactive_connection_lifetime=60,  # evict idle connections after 60s
             statement_cache_size=0,               # required for pgbouncer transaction mode
