@@ -108,12 +108,17 @@ async def upload_data(file: UploadFile = File(...), campaign_id: Optional[str] =
                 if v is None: return None
                 if str(v).lower() == 'nan' or str(v).strip() == '': return None
                 return str(v).strip()
+
+            def clean_email(v):
+                val = clean_val(v)
+                if not val: return None
+                return val.strip(" \t\n\r,;\"'")
                 
-            email = clean_val(email)
+            email = clean_email(email)
             first_name = clean_val(first_name)
             last_name = clean_val(last_name)
             name = clean_val(name)
-            alt_email = clean_val(alt_email)
+            alt_email = clean_email(alt_email)
             title = clean_val(title)
             dept = clean_val(dept)
             company = clean_val(company)

@@ -610,9 +610,10 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                     plain_body = body
 
                 try:
+                    target_email = r.email.strip(" \t\n\r,;\"'")
                     await asyncio.to_thread(
                         session.send_message,
-                        r.email,
+                        target_email,
                         subject,
                         plain_body,
                         html_body,

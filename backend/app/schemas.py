@@ -74,7 +74,7 @@ class EmailConfigOut(BaseModel):
 # ─── Recipient ────────────────────────────────────────────────────────────────
 
 class RecipientBase(BaseModel):
-    email: EmailStr
+    email: str
     name: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None

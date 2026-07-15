@@ -360,6 +360,9 @@ async def init_db() -> None:
                 await conn.execute("UPDATE public.campaigns SET project_id = $1 WHERE project_id IS NULL", default_project_id)
                 await conn.execute("UPDATE public.email_configs SET project_id = $1 WHERE project_id IS NULL", default_project_id)
                 await conn.execute("UPDATE public.meetings SET project_id = $1 WHERE project_id IS NULL", default_project_id)
+                
+                # Sanitize recipient emails by trimming trailing commas, semicolons, quotes, and spaces
+                await conn.execute("UPDATE public.recipients SET email = TRIM(BOTH ' ,;\"''' FROM email)")
 
                 # Grant all existing users access to the default project
                 all_user_ids = await conn.fetch("SELECT id FROM public.profiles")
