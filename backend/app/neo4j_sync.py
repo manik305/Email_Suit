@@ -1,3 +1,4 @@
+# Neo4j Synchronization and Connectivity Module
 import os
 import logging
 import asyncio
