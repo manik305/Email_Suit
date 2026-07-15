@@ -4,6 +4,7 @@ import { ALL_TIMEZONES, TZ_REGIONS, localToUtc, utcToLocal } from '../data/timez
 import { InboxPanel, RecipientsPanel, AnalyticsPanel } from '../components/CampaignPanels';
 import EmailConfigPanel from '../components/EmailConfigPanel';
 import DataIntegrationPanel from '../components/DataIntegrationPanel';
+import { GraphDashboard } from '../components/GraphDashboard';
 import type { Panel } from '../components/CampaignPanels';
 
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
@@ -117,6 +118,7 @@ const CampaignsPage: React.FC = () => {
     tone: string; product: string; localDt: string; timezone: string;
   }>({
     name:'', target_segment:'All Leads', schedule:'Once',
+    campaign_type: 'cold',
     subject:'', body_template:'', send_at:'',
     email_config_id:'',
     tone:'professional', product:'',
@@ -159,6 +161,7 @@ const CampaignsPage: React.FC = () => {
     setConfigMode('existing');
     setForm({
       name:'', target_segment:'All Leads', schedule:'Once',
+      campaign_type: 'cold',
       subject:'', body_template:'', send_at:'',
       email_config_id:'',
       tone:'professional', product:'',
@@ -182,6 +185,7 @@ const CampaignsPage: React.FC = () => {
       name: selected.name,
       target_segment: (selected.target_segment as any) || 'All Leads',
       schedule: (selected.schedule as any) || 'Once',
+      campaign_type: selected.campaign_type || 'cold',
       subject: selected.subject || '',
       body_template: selected.body_template || '',
       send_at: selected.send_at || '',
@@ -347,6 +351,7 @@ const CampaignsPage: React.FC = () => {
             name: form.name,
             target_segment: form.target_segment,
             schedule: form.schedule,
+            campaign_type: form.campaign_type,
             subject: form.subject || null,
             body_template: form.body_template || null,
             send_at,
@@ -376,6 +381,7 @@ const CampaignsPage: React.FC = () => {
           });
           setForm({
             name:'',target_segment:'All Leads',schedule:'Once',subject:'',body_template:'',send_at:'',email_config_id:'',
+            campaign_type: 'cold',
             tone:'professional',product:'',localDt:'',timezone:'America/New_York',target_region:'US',
             mails_per_minute: 2, daily_fresh_limit: 100, max_contacts_per_company: 1,
           });
@@ -395,6 +401,7 @@ const CampaignsPage: React.FC = () => {
       name: form.name, target_segment: form.target_segment,
       schedule: form.schedule, subject: form.subject || undefined,
       body_template: form.body_template || undefined,
+      campaign_type: form.campaign_type,
       send_at: send_at || undefined, email_config_id: configId,
       target_region: form.target_region,
       timezone: form.timezone,
@@ -416,6 +423,7 @@ const CampaignsPage: React.FC = () => {
       });
       setForm({
         name:'',target_segment:'All Leads',schedule:'Once',subject:'',body_template:'',send_at:'',email_config_id:'',
+        campaign_type: 'cold',
         tone:'professional',product:'',localDt:'',timezone:'America/New_York',target_region:'US',
         mails_per_minute: 2, daily_fresh_limit: 100, max_contacts_per_company: 1,
       });
@@ -614,6 +622,7 @@ const CampaignsPage: React.FC = () => {
 
   const PANELS = [
     { key:'inbox'            as Panel, label:'Inbox',            color:'text-blue-400',   icon:'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+    { key:'graph'            as Panel, label:'Neo4j Graph',      color:'text-amber-500',  icon:'M9 20l-5.447-2.724A2 2 0 013 15.447V8.553a2 2 0 011.053-1.789L9 4m0 16v-8m0 8l5.447-2.724A2 2 0 0015 15.447V8.553a2 2 0 00-1.053-1.789L9 4m0 0l5.447 2.724A2 2 0 0115 8.553v6.894a2 2 0 01-1.053 1.789L9 20' },
     { key:'data-integration' as Panel, label:'Data Integration', color:'text-cyan-400',   icon:'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4' },
     { key:'drafts'           as Panel, label:'Drafts',           color:'text-amber-400',  icon:'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
     { key:'sent'             as Panel, label:'Sent',             color:'text-emerald-400',icon:'M12 19l9 2-9-18-9 18 9-2zm0 0v-8' },
@@ -765,7 +774,14 @@ const CampaignsPage: React.FC = () => {
                       {/* Campaign Info */}
                       <div className="mb-4">
                         <h3 className="text-base font-bold text-slate-800 hover:text-[#4BA7C9] transition-colors truncate">{c.name}</h3>
-                        <p className="text-[10px] text-slate-400 mt-0.5 font-medium">{c.target_segment} · {c.schedule}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5 font-medium flex items-center gap-1.5 flex-wrap">
+                          {c.campaign_type === 'warm' ? (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[8px] font-extrabold uppercase tracking-wider">🔥 WARM</span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20 text-[8px] font-extrabold uppercase tracking-wider">❄️ COLD</span>
+                          )}
+                          <span>{c.target_segment} · {c.schedule}</span>
+                        </p>
                       </div>
 
                       {/* Stats counters */}
@@ -1111,6 +1127,7 @@ const CampaignsPage: React.FC = () => {
               {activePanel && selectedId && (
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                   {activePanel === 'inbox' && <InboxPanel campaignId={selectedId} projectId={selectedProjectId}/>}
+                  {activePanel === 'graph' && <GraphDashboard campaignId={selectedId} projectId={selectedProjectId}/>}
                   {activePanel === 'data-integration' && (
                     <DataIntegrationPanel
                       campaignId={selectedId}
@@ -1352,7 +1369,14 @@ const CampaignsPage: React.FC = () => {
                     className="w-full bg-white border border-slate-250 rounded-xl px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#4BA7C9] focus:border-[#4BA7C9]"/>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <label htmlFor="c-type" className="block font-bold text-slate-500 uppercase">Campaign Type</label>
+                    <select id="c-type" className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2" value={form.campaign_type || 'cold'} onChange={e=>set('campaign_type',e.target.value)}>
+                      <option value="cold">❄️ Cold</option>
+                      <option value="warm">🔥 Warm</option>
+                    </select>
+                  </div>
                   <div className="space-y-1">
                     <label htmlFor="c-segment" className="block font-bold text-slate-500 uppercase">Target Segment</label>
                     <select id="c-segment" className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2" value={form.target_segment} onChange={e=>set('target_segment',e.target.value)}>

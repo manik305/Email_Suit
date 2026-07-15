@@ -250,6 +250,7 @@ class Campaign(PostgresModel):
     target_segment: Optional[str] = None
     schedule: Optional[str] = "Once"  # Daily, Weekly, Once
     status: str = "draft"             # draft, active, completed, paused
+    campaign_type: str = "cold"       # cold, warm
 
     # FK → EmailConfig._id  (set when campaign is created or updated)
     email_config_id: Optional[str] = None

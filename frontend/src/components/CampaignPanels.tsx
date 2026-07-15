@@ -49,7 +49,7 @@ interface AnalyticsDetail {
   response_rate: number;
 }
 
-export type Panel = 'inbox' | 'data-integration' | 'drafts' | 'sent' | 'analytics' | 'email-config' | null;
+export type Panel = 'inbox' | 'data-integration' | 'drafts' | 'sent' | 'analytics' | 'email-config' | 'graph' | null;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {

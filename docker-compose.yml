@@ -32,6 +32,9 @@ services:
       - IMAP_USERNAME=manikprabhu0098@gmail.com
       - IMAP_PASSWORD=betxzcqnluezyozt
       - IMAP_USE_SSL=True
+      - NEO4J_URI=${NEO4J_URI:-}
+      - NEO4J_USER=${NEO4J_USER:-}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-}
     restart: always
 
   backend-scheduler:
@@ -60,6 +63,9 @@ services:
       - IMAP_USERNAME=manikprabhu0098@gmail.com
       - IMAP_PASSWORD=betxzcqnluezyozt
       - IMAP_USE_SSL=True
+      - NEO4J_URI=${NEO4J_URI:-}
+      - NEO4J_USER=${NEO4J_USER:-}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-}
     restart: always
     depends_on:
       - backend-api

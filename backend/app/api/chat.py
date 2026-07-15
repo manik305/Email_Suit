@@ -178,3 +178,57 @@ async def generate_email_draft(req: EmailDraftRequest):
 
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"AI draft generation failed: {exc}")
+
+
+def classify_response_with_ai(email_body: str) -> str:
+    """
+    Uses Euron AI to classify an incoming email response.
+    Returns one of: 'lead' (interested), 'hot' (very interested/booking meeting),
+    'cold' (not interested/future follow-up), 'negative' (explicit opt-out/anger), 'bounce' (invalid/failed).
+    """
+    if not _is_key_configured():
+        # Fallback keyword-based simple classifier
+        body_lower = email_body.lower()
+        if "unsubscribe" in body_lower or "remove me" in body_lower or "stop emailing" in body_lower or "leave me alone" in body_lower:
+            return "negative"
+        if "interested" in body_lower or "tell me more" in body_lower or "sounds good" in body_lower or "send info" in body_lower:
+            return "lead"
+        if "calendar" in body_lower or "schedule" in body_lower or "meeting" in body_lower or "call" in body_lower or "zoom" in body_lower:
+            return "hot"
+        if "not interested" in body_lower or "no thanks" in body_lower or "not at this time" in body_lower:
+            return "cold"
+        return "cold"
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=EURI_API_KEY,
+            base_url="https://api.euron.one/api/v1/euri"
+        )
+        system_prompt = (
+            "You are an AI B2B email response classifier. Your job is to classify the recipient's reply into exactly one of these categories:\n"
+            "- 'hot': The recipient is highly interested, wants to schedule a call/meeting, or gave their phone number.\n"
+            "- 'lead': The recipient is interested, wants more information, or asked a question about the product.\n"
+            "- 'cold': The recipient is polite but not interested right now, or asked to follow up in a few months.\n"
+            "- 'negative': The recipient is hostile, demands to be removed, says 'stop', or unsubscribes.\n"
+            "- 'bounce': The email was undelivered/bounced (technical failure).\n\n"
+            "You must output ONLY one word representing the category: hot, lead, cold, negative, or bounce. Do not include any punctuation, quotes, explanation, or other text."
+        )
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Classify this email response:\\n\\n{email_body}"}
+            ],
+            max_tokens=10,
+            temperature=0.0
+        )
+        cls_val = response.choices[0].message.content.strip().lower()
+        for valid in ["hot", "lead", "cold", "negative", "bounce"]:
+            if valid in cls_val:
+                return valid
+        return "cold"
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("AI response classification failed: %s", e)
+        return "cold"

@@ -1,9 +1,12 @@
-name: CI/CD - Deploy to AWS ECR and EC2
+name: CI/CD - Rollback AWS Deployment
 
 on:
-  push:
-    branches:
-      - Main
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'The ECR image tag (Git Commit SHA) to roll back to'
+        required: true
+        type: string
 
 env:
   AWS_REGION: us-east-1
@@ -11,14 +14,10 @@ env:
   ECR_FRONTEND_REP: emailsaas-frontend
 
 jobs:
-  build-and-deploy:
+  rollback:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout Repository
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      # 2. Configure AWS Credentials
+      # 1. Configure AWS Credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -26,40 +25,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 3. Log in to Amazon ECR
+      # 2. Log in to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # 4. Build, Tag, and Push Backend Image
-      - name: Build and Push Backend Docker Image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build \
-            -t $ECR_REGISTRY/${{ env.ECR_BACKEND_REP }}:latest \
-            -t $ECR_REGISTRY/${{ env.ECR_BACKEND_REP }}:$IMAGE_TAG \
-            -f backend/Dockerfile backend
-          docker push $ECR_REGISTRY/${{ env.ECR_BACKEND_REP }}:latest
-          docker push $ECR_REGISTRY/${{ env.ECR_BACKEND_REP }}:$IMAGE_TAG
-
-      # 5. Build, Tag, and Push Frontend Image
-      - name: Build and Push Frontend Docker Image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build \
-            --build-arg VITE_API_BASE_URL="/api/v1" \
-            -t $ECR_REGISTRY/${{ env.ECR_FRONTEND_REP }}:latest \
-            -t $ECR_REGISTRY/${{ env.ECR_FRONTEND_REP }}:$IMAGE_TAG \
-            -f frontend/Dockerfile frontend
-          docker push $ECR_REGISTRY/${{ env.ECR_FRONTEND_REP }}:latest
-          docker push $ECR_REGISTRY/${{ env.ECR_FRONTEND_REP }}:$IMAGE_TAG
-
-      # 6. Deploy to EC2 via SSH
-      - name: Deploy to EC2
+      # 3. SSH into EC2 and run the rollback script
+      - name: Deploy Target Tag to EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_PUBLIC_IP }}
@@ -67,8 +39,12 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: ECR_REGISTRY,AWS_REGION
           script: |
+            # Set target tag
+            TARGET_TAG="${{ github.event.inputs.image_tag }}"
+            REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+            
             # Login to ECR on remote EC2 instance
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin $REGISTRY
 
             # Stop existing containers if running
             docker stop backend frontend || true
@@ -77,9 +53,13 @@ jobs:
             # Prune unused images and layers to free up disk space
             docker system prune -a -f --volumes
 
-            # Pull latest ECR images
-            docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REP }}:latest
-            docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REP }}:latest
+            # Pull targeted ECR images
+            docker pull $REGISTRY/${{ env.ECR_BACKEND_REP }}:$TARGET_TAG
+            docker pull $REGISTRY/${{ env.ECR_FRONTEND_REP }}:$TARGET_TAG
+
+            # Tag them as latest locally so they persist as current version
+            docker tag $REGISTRY/${{ env.ECR_BACKEND_REP }}:$TARGET_TAG $REGISTRY/${{ env.ECR_BACKEND_REP }}:latest
+            docker tag $REGISTRY/${{ env.ECR_FRONTEND_REP }}:$TARGET_TAG $REGISTRY/${{ env.ECR_FRONTEND_REP }}:latest
 
             # Run Backend container (bonded to Supabase, JWT Secret, and OpenAI)
             docker run -d \
@@ -97,11 +77,11 @@ jobs:
               -e NEO4J_URI="${{ secrets.NEO4J_URI }}" \
               -e NEO4J_USER="${{ secrets.NEO4J_USER }}" \
               -e NEO4J_PASSWORD="${{ secrets.NEO4J_PASSWORD }}" \
-              ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REP }}:latest
+              $REGISTRY/${{ env.ECR_BACKEND_REP }}:$TARGET_TAG
 
             # Run Frontend container
             docker run -d \
               --name frontend \
               --restart always \
               -p 8080:80 \
-              ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REP }}:latest
+              $REGISTRY/${{ env.ECR_FRONTEND_REP }}:$TARGET_TAG

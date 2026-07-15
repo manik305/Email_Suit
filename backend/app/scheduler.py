@@ -701,7 +701,12 @@ async def _run_scheduled_campaigns() -> None:
     """Check for campaigns that are due and fire SMTP sends."""
     from .models import Campaign
 
-    all_campaigns = await Campaign.find().to_list()
+    try:
+        all_campaigns = await Campaign.find().to_list()
+    except Exception as e:
+        logger.warning("Database query failed in scheduled campaigns check (possible network or DNS blip): %s", e)
+        return
+
     candidates = [
         c for c in all_campaigns 
         if c.status in ["draft", "active"] and c.send_at and c.email_config_id

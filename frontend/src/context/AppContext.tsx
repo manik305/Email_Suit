@@ -40,6 +40,7 @@ export interface Campaign {
   status: string;
   subject?: string;
   body_template?: string;
+  campaign_type?: string;
   follow_up_templates?: string[];
   send_at?: string;
   email_config_id?: string;
@@ -105,6 +106,7 @@ export interface CreateCampaignPayload {
   schedule?: string;
   subject?: string;
   body_template?: string;
+  campaign_type?: string;
   send_at?: string;
   email_config_id?: string;
   target_region?: string;

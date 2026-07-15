@@ -121,6 +121,7 @@ class CampaignBase(BaseModel):
     name: str
     target_segment: Optional[str] = None
     schedule: Optional[str] = "Once"
+    campaign_type: Optional[str] = "cold"
     subject: Optional[str] = None
     body_template: Optional[str] = None
     follow_up_templates: Optional[List[str]] = None
@@ -156,6 +157,7 @@ class CampaignUpdate(BaseModel):
     name: Optional[str] = None
     target_segment: Optional[str] = None
     schedule: Optional[str] = None
+    campaign_type: Optional[str] = None
     subject: Optional[str] = None
     body_template: Optional[str] = None
     follow_up_templates: Optional[List[str]] = None

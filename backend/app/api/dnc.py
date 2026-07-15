@@ -100,12 +100,21 @@ async def classify_response(
             email=payload.email,
             campaign_id=payload.source_campaign_id,
         ).to_list()
+        from app.neo4j_sync import sync_lead_response
         for r in recipients:
             await r.update({"$set": {
                 "response_category": payload.reason,
                 "next_follow_up_at": None,  # Cancel follow-ups
                 "status": "replied" if r.status in ("sent", "pending") else r.status,
             }})
+            try:
+                await sync_lead_response(
+                    recipient_id=r.id,
+                    category=payload.reason,
+                    response_text=payload.notes or ""
+                )
+            except Exception as sync_err:
+                logger.error("Failed to sync lead classification to Neo4j: %s", sync_err)
 
     # Also update recipients across ALL campaigns in this project that have the same email
     from app.database import db_pool

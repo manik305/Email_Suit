@@ -380,6 +380,123 @@ async def send_campaign(
     return res
 
 
+# ─── Neo4j Graph Data ─────────────────────────────────────────────────────────
+
+@router.get("/{campaign_id}/graph")
+async def get_campaign_graph(campaign_id: str):
+    """
+    Fetch nodes and edges representing targeted and responded relationships
+    for a campaign from the Neo4j graph database.
+    """
+    from app.neo4j_sync import get_neo4j_driver
+    driver = get_neo4j_driver()
+    if not driver:
+        # Return mock demo data if Neo4j is not connected so the UI is fully functional
+        logger.warning("Neo4j database is not connected. Serving sandbox mock graph data.")
+        return {
+            "nodes": [
+                {"id": f"campaign_{campaign_id}", "label": "Active Outreach Campaign", "type": "campaign", "properties": {"status": "active"}},
+                {"id": "lead_1", "label": "Jane Doe", "type": "lead", "properties": {"email": "jane@example.com", "status": "replied", "responseCategory": "hot", "companyName": "DigioClick", "department": "Marketing", "title": "CMO"}},
+                {"id": "lead_2", "label": "John Smith", "type": "lead", "properties": {"email": "john@example.com", "status": "sent", "responseCategory": None, "companyName": "DigioClick", "department": "Engineering", "title": "Director of Engineering"}},
+                {"id": "lead_3", "label": "Alice Johnson", "type": "lead", "properties": {"email": "alice@example.com", "status": "replied", "responseCategory": "lead", "companyName": "SaaS Corp", "department": "Product", "title": "VP of Product"}},
+                {"id": "lead_ref", "label": "Bob Referred", "type": "lead", "properties": {"email": "bob@example.com", "status": "pending", "responseCategory": None, "companyName": "SaaS Corp", "department": "Product", "title": "Senior Product Manager"}}
+            ],
+            "edges": [
+                {"id": "t1", "source": f"campaign_{campaign_id}", "target": "lead_1", "type": "TARGETED"},
+                {"id": "t2", "source": f"campaign_{campaign_id}", "target": "lead_2", "type": "TARGETED"},
+                {"id": "t3", "source": f"campaign_{campaign_id}", "target": "lead_3", "type": "TARGETED"},
+                {"id": "r1", "source": "lead_1", "target": f"campaign_{campaign_id}", "type": "RESPONDED", "properties": {"category": "hot", "text": "I would love to set up a meeting this Thursday at 2 PM!"}},
+                {"id": "r3", "source": "lead_3", "target": f"campaign_{campaign_id}", "type": "RESPONDED", "properties": {"category": "lead", "text": "Thanks for reaching out, can you send over some documentation?"}},
+                {"id": "ref1", "source": "lead_1", "target": "lead_ref", "type": "REFERRED_DIRECTLY", "properties": {}}
+            ],
+            "connected": False
+        }
+
+    try:
+        query = """
+        MATCH (c:Campaign {pg_id: $campaign_id})
+        OPTIONAL MATCH (c)-[r:TARGETED]->(l:Lead)
+        OPTIONAL MATCH (l)-[resp:RESPONDED]->(c)
+        OPTIONAL MATCH (l)-[ref:REFERRED_DIRECTLY|REFERRED_TO_DEPARTMENT]->(other:Lead)
+        RETURN c, l, r, resp, ref, other
+        """
+        nodes_map = {}
+        edges = []
+        
+        with driver.session() as session:
+            result = session.run(query, {"campaign_id": campaign_id})
+            for record in result:
+                c = record.get("c")
+                l = record.get("l")
+                r = record.get("r")
+                resp = record.get("resp")
+                ref = record.get("ref")
+                other = record.get("other")
+                
+                if c:
+                    c_id = f"campaign_{c.get('pg_id')}"
+                    if c_id not in nodes_map:
+                        nodes_map[c_id] = {
+                            "id": c_id,
+                            "label": c.get("name", "Campaign"),
+                            "type": "campaign",
+                            "properties": dict(c)
+                        }
+                if l:
+                    l_id = f"lead_{l.get('pg_id')}"
+                    if l_id not in nodes_map:
+                        nodes_map[l_id] = {
+                            "id": l_id,
+                            "label": l.get("name") or l.get("email") or "Lead",
+                            "type": "lead",
+                            "properties": dict(l)
+                        }
+                    if r:
+                        edges.append({
+                            "id": f"targeted_{c.get('pg_id')}_{l.get('pg_id')}",
+                            "source": c_id,
+                            "target": l_id,
+                            "type": "TARGETED"
+                        })
+                    if resp:
+                        edges.append({
+                            "id": f"responded_{l.get('pg_id')}_{c.get('pg_id')}",
+                            "source": l_id,
+                            "target": c_id,
+                            "type": "RESPONDED",
+                            "properties": {
+                                "category": resp.get("category"),
+                                "text": resp.get("text")
+                            }
+                        })
+                if other:
+                    o_id = f"lead_{other.get('pg_id')}"
+                    if o_id not in nodes_map:
+                        nodes_map[o_id] = {
+                            "id": o_id,
+                            "label": other.get("name") or other.get("email") or "Lead",
+                            "type": "lead",
+                            "properties": dict(other)
+                        }
+                    if ref:
+                        edges.append({
+                            "id": f"ref_{l.get('pg_id')}_{other.get('pg_id')}",
+                            "source": l_id,
+                            "target": o_id,
+                            "type": ref.type,
+                            "properties": dict(ref)
+                        })
+                        
+        return {
+            "nodes": list(nodes_map.values()),
+            "edges": edges,
+            "connected": True
+        }
+    except Exception as e:
+        logger.error("Failed to query Neo4j graph data: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ─── IMAP inbox ───────────────────────────────────────────────────────────────
 
 @router.get("/{campaign_id}/inbox", response_model=schemas.InboxResponse)
@@ -473,6 +590,60 @@ async def get_campaign_inbox(
             )
             if dnc_entry:
                 msg.response_category = dnc_entry.reason
+
+    # 5. Agentic Auto-Classification for Warm Campaigns
+    if campaign.campaign_type == "warm":
+        from app.api.chat import classify_response_with_ai
+        from app.neo4j_sync import sync_lead_response
+        for msg in messages:
+            if msg.response_category:
+                continue
+            sender_email = msg.from_addr
+            if "<" in sender_email and ">" in sender_email:
+                sender_email = sender_email.split("<")[1].split(">")[0].strip()
+            sender_email = sender_email.strip().lower()
+            
+            # Find recipient in this campaign
+            rec = await models.Recipient.find_one(email=sender_email, campaign_id=campaign_id)
+            if rec and not rec.response_category:
+                email_body = msg.body or msg.snippet or ""
+                category = classify_response_with_ai(email_body)
+                if category:
+                    msg.response_category = category
+                    # Sync to Neo4j and update Postgres
+                    try:
+                        await sync_lead_response(
+                            recipient_id=rec.id,
+                            category=category,
+                            response_text=email_body
+                        )
+                    except Exception as neo_err:
+                        logger.error("Failed to sync auto-classified warm response to Neo4j: %s", neo_err)
+                        
+                    # Also create a DNC entry for project-wide opt-out / classification context
+                    try:
+                        if campaign.project_id:
+                            # Avoid duplicate DNC entries
+                            exists = await models.DncEntry.find_one(email=sender_email, project_id=campaign.project_id)
+                            if not exists:
+                                dnc = models.DncEntry(
+                                    email=sender_email,
+                                    reason=category,
+                                    source_campaign_id=campaign_id,
+                                    project_id=campaign.project_id,
+                                    notes=f"Auto-classified by Agentic Framework. Excerpt: {email_body[:100]}",
+                                    classified_by="agentic-framework@system"
+                                )
+                                await dnc.insert()
+                            else:
+                                await exists.update({"$set": {
+                                    "reason": category,
+                                    "source_campaign_id": campaign_id,
+                                    "notes": f"Auto-reclassified by Agentic Framework. Excerpt: {email_body[:100]}",
+                                    "classified_by": "agentic-framework@system"
+                                }})
+                    except Exception as dnc_err:
+                        logger.error("Failed to insert auto-classified DNC entry: %s", dnc_err)
 
     return schemas.InboxResponse(
         campaign_id=campaign_id,

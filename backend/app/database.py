@@ -146,6 +146,7 @@ async def init_db() -> None:
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_industries JSONB DEFAULT '[]';
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_regions JSONB DEFAULT '[]';
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_active BOOLEAN DEFAULT FALSE;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS campaign_type VARCHAR(50) DEFAULT 'cold' NOT NULL;
 
                     -- Activity Logs (Admin Audit Trail)
                     CREATE TABLE IF NOT EXISTS public.activity_logs (
@@ -166,6 +167,187 @@ async def init_db() -> None:
                     CREATE INDEX IF NOT EXISTS idx_activity_logs_campaign ON public.activity_logs(campaign_id);
                     CREATE INDEX IF NOT EXISTS idx_activity_logs_category ON public.activity_logs(category);
                     CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON public.activity_logs(created_at DESC);
+
+                    -- Enable RLS on all existing public tables
+                    ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE public.project_members ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE public.email_configs ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE public.campaigns ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE public.recipients ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE public.recipient_events ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE public.email_config_daily_quota ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE public.meetings ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE public.dnc_list ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
+
+                    -- Security Definer Helper Functions (to prevent infinite policy recursion)
+                    CREATE OR REPLACE FUNCTION public.is_admin()
+                    RETURNS BOOLEAN AS $$
+                      SELECT EXISTS (
+                        SELECT 1 FROM public.profiles
+                        WHERE id = auth.uid() AND role = 'admin'
+                      );
+                    $$ LANGUAGE sql SECURITY DEFINER;
+
+                    CREATE OR REPLACE FUNCTION public.is_project_member(project_id UUID)
+                    RETURNS BOOLEAN AS $$
+                      SELECT EXISTS (
+                        SELECT 1 FROM public.project_members
+                        WHERE user_id = auth.uid() AND project_id = $1
+                      );
+                    $$ LANGUAGE sql SECURITY DEFINER;
+
+                    CREATE OR REPLACE FUNCTION public.is_project_manager(project_id UUID)
+                    RETURNS BOOLEAN AS $$
+                      SELECT EXISTS (
+                        SELECT 1 FROM public.project_members
+                        WHERE user_id = auth.uid() AND project_id = $1 AND role = 'manager'
+                      );
+                    $$ LANGUAGE sql SECURITY DEFINER;
+
+                    CREATE OR REPLACE FUNCTION public.is_campaign_member(campaign_id UUID)
+                    RETURNS BOOLEAN AS $$
+                      SELECT EXISTS (
+                        SELECT 1 FROM public.campaigns c
+                        WHERE c.id = campaign_id AND (public.is_project_member(c.project_id) OR public.is_admin())
+                      );
+                    $$ LANGUAGE sql SECURITY DEFINER;
+
+                    CREATE OR REPLACE FUNCTION public.is_recipient_member(recipient_id UUID)
+                    RETURNS BOOLEAN AS $$
+                      SELECT EXISTS (
+                        SELECT 1 FROM public.recipients r
+                        WHERE r.id = recipient_id AND (public.is_campaign_member(r.campaign_id) OR public.is_admin())
+                      );
+                    $$ LANGUAGE sql SECURITY DEFINER;
+
+                    CREATE OR REPLACE FUNCTION public.is_email_config_member(config_id UUID)
+                    RETURNS BOOLEAN AS $$
+                      SELECT EXISTS (
+                        SELECT 1 FROM public.email_configs c
+                        WHERE c.id = config_id AND (public.is_project_member(c.project_id) OR public.is_admin())
+                      );
+                    $$ LANGUAGE sql SECURITY DEFINER;
+
+                    -- RLS Policies for Profiles
+                    DROP POLICY IF EXISTS profiles_read_policy ON public.profiles;
+                    CREATE POLICY profiles_read_policy ON public.profiles
+                      FOR SELECT TO authenticated
+                      USING (auth.uid() = id OR public.is_admin());
+
+                    DROP POLICY IF EXISTS profiles_write_policy ON public.profiles;
+                    CREATE POLICY profiles_write_policy ON public.profiles
+                      FOR ALL TO authenticated
+                      USING (auth.uid() = id OR public.is_admin());
+
+                    -- RLS Policies for Projects
+                    DROP POLICY IF EXISTS projects_read_policy ON public.projects;
+                    CREATE POLICY projects_read_policy ON public.projects
+                      FOR SELECT TO authenticated
+                      USING (public.is_project_member(id) OR public.is_admin());
+
+                    DROP POLICY IF EXISTS projects_write_policy ON public.projects;
+                    CREATE POLICY projects_write_policy ON public.projects
+                      FOR ALL TO authenticated
+                      USING (public.is_project_manager(id) OR public.is_admin());
+
+                    -- RLS Policies for Project Members
+                    DROP POLICY IF EXISTS members_read_policy ON public.project_members;
+                    CREATE POLICY members_read_policy ON public.project_members
+                      FOR SELECT TO authenticated
+                      USING (public.is_project_member(project_id) OR public.is_admin());
+
+                    DROP POLICY IF EXISTS members_write_policy ON public.project_members;
+                    CREATE POLICY members_write_policy ON public.project_members
+                      FOR ALL TO authenticated
+                      USING (public.is_project_manager(project_id) OR public.is_admin());
+
+                    -- RLS Policies for Campaigns
+                    DROP POLICY IF EXISTS campaigns_policy ON public.campaigns;
+                    CREATE POLICY campaigns_policy ON public.campaigns
+                      FOR ALL TO authenticated
+                      USING (public.is_project_member(project_id) OR public.is_admin());
+
+                    -- RLS Policies for Email Configs
+                    DROP POLICY IF EXISTS email_configs_read_policy ON public.email_configs;
+                    CREATE POLICY email_configs_read_policy ON public.email_configs
+                      FOR SELECT TO authenticated
+                      USING (public.is_project_member(project_id) OR public.is_admin());
+
+                    DROP POLICY IF EXISTS email_configs_write_policy ON public.email_configs;
+                    CREATE POLICY email_configs_write_policy ON public.email_configs
+                      FOR ALL TO authenticated
+                      USING (public.is_project_manager(project_id) OR public.is_admin());
+
+                    -- RLS Policies for Recipients
+                    DROP POLICY IF EXISTS recipients_policy ON public.recipients;
+                    CREATE POLICY recipients_policy ON public.recipients
+                      FOR ALL TO authenticated
+                      USING (public.is_campaign_member(campaign_id) OR public.is_admin());
+
+                    -- RLS Policies for Recipient Events
+                    DROP POLICY IF EXISTS recipient_events_policy ON public.recipient_events;
+                    CREATE POLICY recipient_events_policy ON public.recipient_events
+                      FOR ALL TO authenticated
+                      USING (public.is_recipient_member(recipient_id) OR public.is_admin());
+
+                    -- RLS Policies for Email Config Daily Quota Tracker
+                    DROP POLICY IF EXISTS quota_policy ON public.email_config_daily_quota;
+                    CREATE POLICY quota_policy ON public.email_config_daily_quota
+                      FOR ALL TO authenticated
+                      USING (public.is_email_config_member(email_config_id) OR public.is_admin());
+
+                    -- RLS Policies for Meetings
+                    DROP POLICY IF EXISTS meetings_policy ON public.meetings;
+                    CREATE POLICY meetings_policy ON public.meetings
+                      FOR ALL TO authenticated
+                      USING (public.is_project_member(project_id) OR public.is_admin());
+
+                    -- RLS Policies for DNC List
+                    DROP POLICY IF EXISTS dnc_policy ON public.dnc_list;
+                    CREATE POLICY dnc_policy ON public.dnc_list
+                      FOR ALL TO authenticated
+                      USING (public.is_project_member(project_id) OR public.is_admin());
+
+                    -- RLS Policies for Activity Logs
+                    DROP POLICY IF EXISTS logs_read_policy ON public.activity_logs;
+                    CREATE POLICY logs_read_policy ON public.activity_logs
+                      FOR SELECT TO authenticated
+                      USING (public.is_project_member(project_id) OR public.is_admin());
+
+                    DROP POLICY IF EXISTS logs_insert_policy ON public.activity_logs;
+                    CREATE POLICY logs_insert_policy ON public.activity_logs
+                      FOR INSERT TO authenticated
+                      WITH CHECK (true); -- Allow app to insert logs dynamically
+
+                    DROP POLICY IF EXISTS logs_admin_policy ON public.activity_logs;
+                    CREATE POLICY logs_admin_policy ON public.activity_logs
+                      FOR ALL TO authenticated
+                      USING (public.is_admin());
+
+                    -- Event Trigger to automatically enable RLS on all future tables
+                    CREATE OR REPLACE FUNCTION public.auto_enable_rls_on_create()
+                    RETURNS EVENT_TRIGGER
+                    LANGUAGE plpgsql
+                    SECURITY DEFINER
+                    AS $$
+                    DECLARE
+                        obj record;
+                    BEGIN
+                        FOR obj IN SELECT * FROM pg_event_trigger_ddl_commands() WHERE command_tag = 'CREATE TABLE'
+                        LOOP
+                            IF obj.schema_name = 'public' THEN
+                                EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY;', obj.schema_name, obj.object_name);
+                            END IF;
+                        END LOOP;
+                    END;
+                    $$;
+
+                    DROP EVENT TRIGGER IF EXISTS trg_auto_enable_rls;
+                    CREATE EVENT TRIGGER trg_auto_enable_rls
+                    ON ddl_command_end
+                    WHEN TAG IN ('CREATE TABLE')
+                    EXECUTE FUNCTION public.auto_enable_rls_on_create();
                 """)
 
                 # Ensure default project exists for legacy compatibility
@@ -187,6 +369,11 @@ async def init_db() -> None:
                         u["id"], default_project_id, "manager"
                     )
                 logger.info("✅ Database schema initialized and legacy tables dropped successfully.")
+                
+                # Trigger Neo4j entire database sync asynchronously in background task
+                import asyncio
+                from app.neo4j_sync import sync_entire_database_to_neo4j
+                asyncio.create_task(sync_entire_database_to_neo4j())
         
         # Auto-seed database with demo data if empty
         async with db_pool.acquire() as conn:
