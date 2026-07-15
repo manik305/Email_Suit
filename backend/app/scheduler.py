@@ -590,13 +590,26 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                             .replace("{{company}}", r.company_name or "").replace("{company}", r.company_name or "")
                         )
 
+                import re
+                has_html = bool(re.search(r'<[a-zA-Z/][^>]*>', body))
+                if has_html:
+                    html_body = body
+                    # Standardize breaks and strip tags
+                    plain_body = re.sub(r'<br\s*/?>', '\n', body)
+                    plain_body = re.sub(r'</p>', '\n\n', plain_body)
+                    plain_body = re.sub(r'<[^>]+>', '', plain_body)
+                    plain_body = re.sub(r'\n{3,}', '\n\n', plain_body).strip()
+                else:
+                    html_body = None
+                    plain_body = body
+
                 try:
                     await asyncio.to_thread(
                         session.send_message,
                         r.email,
                         subject,
-                        body,
-                        None,        # html_body — auto-generated from plain text in SmtpSession
+                        plain_body,
+                        html_body,
                         str(r.id),   # recipient_id for tracking pixel
                     )
 

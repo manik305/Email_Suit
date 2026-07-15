@@ -148,6 +148,55 @@ const CampaignsPage: React.FC = () => {
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3500); };
 
+  const insertFormatting = (
+    textareaId: string,
+    type: 'bold' | 'italic' | 'underline' | 'bullet' | 'number' | 'token',
+    tokenValue?: string
+  ) => {
+    const textarea = document.getElementById(textareaId) as HTMLTextAreaElement;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? 0;
+    const text = textarea.value;
+    const selectedText = text.substring(start, end);
+
+    let replacement = '';
+    if (type === 'bold') {
+      replacement = `<strong>${selectedText || 'bold text'}</strong>`;
+    } else if (type === 'italic') {
+      replacement = `<em>${selectedText || 'italic text'}</em>`;
+    } else if (type === 'underline') {
+      replacement = `<u>${selectedText || 'underlined text'}</u>`;
+    } else if (type === 'bullet') {
+      replacement = `\n<ul>\n  <li>${selectedText || 'list item'}</li>\n</ul>\n`;
+    } else if (type === 'number') {
+      replacement = `\n<ol>\n  <li>${selectedText || 'list item'}</li>\n</ol>\n`;
+    } else if (type === 'token' && tokenValue) {
+      replacement = tokenValue;
+    }
+
+    const newVal = text.substring(0, start) + replacement + text.substring(end);
+
+    if (textareaId === 'c-body') {
+      set('body_template', newVal);
+    } else if (textareaId === 'initial-body') {
+      setInitialBody(newVal);
+    } else if (textareaId === 'followup-editor') {
+      setFollowUps(prev => {
+        const copy = [...prev];
+        copy[followUpStage] = newVal;
+        return copy;
+      });
+    }
+
+    setTimeout(() => {
+      textarea.focus();
+      const offset = replacement.length;
+      textarea.setSelectionRange(start + offset, start + offset);
+    }, 50);
+  };
+
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem('access_token');
     return token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -1152,9 +1201,9 @@ const CampaignsPage: React.FC = () => {
               {selected?.body_template && (
                 <div className="bg-white border border-slate-200 rounded-2xl p-5">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Subject & Template Content</h3>
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 font-mono text-xs text-slate-700 whitespace-pre-wrap">
-                    <strong className="block text-slate-800 mb-2">Subject: {selected.subject}</strong>
-                    {selected.body_template}
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 font-sans text-xs text-slate-700 whitespace-pre-wrap">
+                    <strong className="block text-slate-800 mb-2 font-sans">Subject: {selected.subject}</strong>
+                    <div dangerouslySetInnerHTML={{ __html: selected.body_template }} />
                   </div>
                 </div>
               )}
@@ -1574,10 +1623,27 @@ const CampaignsPage: React.FC = () => {
                     className="w-full bg-white border border-slate-250 rounded-xl px-4 py-2.5 text-slate-805 focus:outline-none focus:ring-1 focus:ring-[#4BA7C9]"/>
                 </div>
 
-                <div className="space-y-1">
-                  <label htmlFor="c-body" className="block font-bold text-slate-500 uppercase">Email Template Body</label>
-                  <textarea id="c-body" rows={4} placeholder="Write template body content... Use tokens like {name}, {company_name}, {designation}." value={form.body_template} onChange={e=>set('body_template',e.target.value)}
-                    className="w-full bg-white border border-slate-250 rounded-xl px-4 py-2.5 text-slate-805 font-mono focus:outline-none resize-none focus:ring-1 focus:ring-[#4BA7C9]"/>
+                 <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <label htmlFor="c-body" className="block font-bold text-slate-500 uppercase">Email Template Body</label>
+                    <div className="flex gap-1">
+                      <button type="button" onClick={() => insertFormatting('c-body', 'token', ' {name}')} className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-650 rounded-md border border-slate-200">+ Full Name</button>
+                      <button type="button" onClick={() => insertFormatting('c-body', 'token', ' {first_name}')} className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-650 rounded-md border border-slate-200">+ First Name</button>
+                      <button type="button" onClick={() => insertFormatting('c-body', 'token', ' {company_name}')} className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-650 rounded-md border border-slate-200">+ Company</button>
+                    </div>
+                  </div>
+                  <div className="border border-slate-250 rounded-xl overflow-hidden focus-within:ring-1 focus-within:ring-[#4BA7C9]">
+                    <div className="flex items-center gap-1.5 p-2 bg-slate-50 border-b border-slate-200 text-xs">
+                      <button type="button" onClick={() => insertFormatting('c-body', 'bold')} className="w-6 h-6 flex items-center justify-center font-black bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm" title="Bold">B</button>
+                      <button type="button" onClick={() => insertFormatting('c-body', 'italic')} className="w-6 h-6 flex items-center justify-center font-bold italic bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm" title="Italic">I</button>
+                      <button type="button" onClick={() => insertFormatting('c-body', 'underline')} className="w-6 h-6 flex items-center justify-center font-bold underline bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm" title="Underline">U</button>
+                      <span className="w-px h-4 bg-slate-200 mx-0.5" />
+                      <button type="button" onClick={() => insertFormatting('c-body', 'bullet')} className="px-1.5 h-6 flex items-center justify-center bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm text-[10px] font-bold" title="Bullet List">• List</button>
+                      <button type="button" onClick={() => insertFormatting('c-body', 'number')} className="px-1.5 h-6 flex items-center justify-center bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm text-[10px] font-bold" title="Numbered List">1. List</button>
+                    </div>
+                    <textarea id="c-body" rows={5} placeholder="Write template body content... Use tokens like {name}, {company_name}, {designation}." value={form.body_template} onChange={e=>set('body_template',e.target.value)}
+                      className="w-full bg-white border-0 px-4 py-2.5 text-slate-800 font-sans focus:outline-none resize-none"/>
+                  </div>
                 </div>
 
                 <div className="bg-[#E6EFF6]/20 border border-[#51A2C3]/10 p-3.5 rounded-xl flex items-center justify-between">
@@ -1990,16 +2056,26 @@ const CampaignsPage: React.FC = () => {
                     />
                   </div>
 
-                  <div className="space-y-1">
+                   <div className="space-y-1">
                     <label htmlFor="initial-body" className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Template Body</label>
-                    <textarea
-                      id="initial-body"
-                      rows={5}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-slate-805 font-mono text-xs focus:outline-none resize-none"
-                      value={initialBody}
-                      onChange={e => setInitialBody(e.target.value)}
-                      placeholder="Write template body content..."
-                    />
+                    <div className="border border-slate-200 rounded-xl overflow-hidden focus-within:ring-1 focus-within:ring-[#4BA7C9]">
+                      <div className="flex items-center gap-1.5 p-2 bg-slate-50 border-b border-slate-200 text-xs">
+                        <button type="button" onClick={() => insertFormatting('initial-body', 'bold')} className="w-6 h-6 flex items-center justify-center font-black bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm" title="Bold">B</button>
+                        <button type="button" onClick={() => insertFormatting('initial-body', 'italic')} className="w-6 h-6 flex items-center justify-center font-bold italic bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm" title="Italic">I</button>
+                        <button type="button" onClick={() => insertFormatting('initial-body', 'underline')} className="w-6 h-6 flex items-center justify-center font-bold underline bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm" title="Underline">U</button>
+                        <span className="w-px h-4 bg-slate-200 mx-0.5" />
+                        <button type="button" onClick={() => insertFormatting('initial-body', 'bullet')} className="px-1.5 h-6 flex items-center justify-center bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm text-[10px] font-bold" title="Bullet List">• List</button>
+                        <button type="button" onClick={() => insertFormatting('initial-body', 'number')} className="px-1.5 h-6 flex items-center justify-center bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm text-[10px] font-bold" title="Numbered List">1. List</button>
+                      </div>
+                      <textarea
+                        id="initial-body"
+                        rows={5}
+                        className="w-full bg-white border-0 px-4 py-2.5 text-slate-800 font-sans text-xs focus:outline-none resize-none"
+                        value={initialBody}
+                        onChange={e => setInitialBody(e.target.value)}
+                        placeholder="Write template body content..."
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-2 pt-1">
@@ -2009,14 +2085,14 @@ const CampaignsPage: React.FC = () => {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => setInitialBody(p => p + ' {{first_name}}')}
+                        onClick={() => insertFormatting('initial-body', 'token', ' {{first_name}}')}
                         className="px-2.5 py-1 bg-slate-200 hover:bg-slate-350 rounded text-[10px] font-mono text-slate-700 font-bold transition hover:bg-slate-300"
                       >
                         + First Name
                       </button>
                       <button
                         type="button"
-                        onClick={() => setInitialBody(p => p + ' {{company}}')}
+                        onClick={() => insertFormatting('initial-body', 'token', ' {{company}}')}
                         className="px-2.5 py-1 bg-slate-200 hover:bg-slate-350 rounded text-[10px] font-mono text-slate-700 font-bold transition hover:bg-slate-300"
                       >
                         + Company Name
@@ -2092,23 +2168,33 @@ const CampaignsPage: React.FC = () => {
                   </div>
 
                   {/* Individual Draft Edit Section */}
-                  <div className="space-y-1">
+                   <div className="space-y-1">
                     <label htmlFor="followup-editor" className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Follow-up Template Body</label>
-                    <textarea
-                      id="followup-editor"
-                      rows={5}
-                      placeholder="Write custom follow-up body template..."
-                      value={followUps[followUpStage] || ''}
-                      onChange={(e) => {
-                        const text = e.target.value;
-                        setFollowUps(prev => {
-                          const copy = [...prev];
-                          copy[followUpStage] = text;
-                          return copy;
-                        });
-                      }}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-850 font-mono text-xs focus:outline-none resize-none"
-                    />
+                    <div className="border border-slate-200 rounded-xl overflow-hidden focus-within:ring-1 focus-within:ring-[#4BA7C9]">
+                      <div className="flex items-center gap-1.5 p-2 bg-slate-50 border-b border-slate-200 text-xs">
+                        <button type="button" onClick={() => insertFormatting('followup-editor', 'bold')} className="w-6 h-6 flex items-center justify-center font-black bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm" title="Bold">B</button>
+                        <button type="button" onClick={() => insertFormatting('followup-editor', 'italic')} className="w-6 h-6 flex items-center justify-center font-bold italic bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm" title="Italic">I</button>
+                        <button type="button" onClick={() => insertFormatting('followup-editor', 'underline')} className="w-6 h-6 flex items-center justify-center font-bold underline bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm" title="Underline">U</button>
+                        <span className="w-px h-4 bg-slate-200 mx-0.5" />
+                        <button type="button" onClick={() => insertFormatting('followup-editor', 'bullet')} className="px-1.5 h-6 flex items-center justify-center bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm text-[10px] font-bold" title="Bullet List">• List</button>
+                        <button type="button" onClick={() => insertFormatting('followup-editor', 'number')} className="px-1.5 h-6 flex items-center justify-center bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-sm text-[10px] font-bold" title="Numbered List">1. List</button>
+                      </div>
+                      <textarea
+                        id="followup-editor"
+                        rows={5}
+                        placeholder="Write custom follow-up body template..."
+                        value={followUps[followUpStage] || ''}
+                        onChange={(e) => {
+                          const text = e.target.value;
+                          setFollowUps(prev => {
+                            const copy = [...prev];
+                            copy[followUpStage] = text;
+                            return copy;
+                          });
+                        }}
+                        className="w-full bg-white border-0 px-4 py-2.5 text-slate-800 font-sans text-xs focus:outline-none resize-none"
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-2 pt-2">
@@ -2119,28 +2205,14 @@ const CampaignsPage: React.FC = () => {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => {
-                          const currentVal = followUps[followUpStage] || '';
-                          setFollowUps(prev => {
-                            const copy = [...prev];
-                            copy[followUpStage] = currentVal + ' {{first_name}}';
-                            return copy;
-                          });
-                        }}
+                        onClick={() => insertFormatting('followup-editor', 'token', ' {{first_name}}')}
                         className="px-2.5 py-1 bg-slate-200 hover:bg-slate-350 rounded text-[10px] font-mono text-slate-700 font-bold transition hover:bg-slate-300"
                       >
                         + First Name
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          const currentVal = followUps[followUpStage] || '';
-                          setFollowUps(prev => {
-                            const copy = [...prev];
-                            copy[followUpStage] = currentVal + ' {{company}}';
-                            return copy;
-                          });
-                        }}
+                        onClick={() => insertFormatting('followup-editor', 'token', ' {{company}}')}
                         className="px-2.5 py-1 bg-slate-200 hover:bg-slate-350 rounded text-[10px] font-mono text-slate-700 font-bold transition hover:bg-slate-300"
                       >
                         + Company Name
@@ -2191,25 +2263,35 @@ const CampaignsPage: React.FC = () => {
                       </div>
                       <div>
                         <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Body Preview</span>
-                        <div className="font-mono text-slate-700 whitespace-pre-wrap leading-relaxed bg-[#FAF9F6] p-2.5 rounded border border-slate-100 max-h-[150px] overflow-y-auto text-[11px]">
-                          {initialBody
-                            .replace(/{name}/g, previewName)
-                            .replace(/{company_name}/g, previewCompany)
-                            .replace(/{company}/g, previewCompany)
-                          }
-                        </div>
+                        <div 
+                          className="font-sans text-slate-700 whitespace-pre-wrap leading-relaxed bg-[#FAF9F6] p-2.5 rounded border border-slate-100 max-h-[150px] overflow-y-auto text-[11px]"
+                          dangerouslySetInnerHTML={{
+                            __html: initialBody
+                              .replace(/{name}/g, previewName)
+                              .replace(/{company_name}/g, previewCompany)
+                              .replace(/{company}/g, previewCompany)
+                              .replace(/{{name}}/g, previewName)
+                              .replace(/{{company_name}}/g, previewCompany)
+                              .replace(/{{company}}/g, previewCompany)
+                          }}
+                        />
                       </div>
                     </>
                   ) : (
                     <div>
                       <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Follow-up {followUpStage} Body Preview</span>
-                      <div className="font-mono text-slate-700 whitespace-pre-wrap leading-relaxed bg-[#FAF9F6] p-2.5 rounded border border-slate-100 max-h-[150px] overflow-y-auto text-[11px]">
-                        {(followUps[followUpStage] || '')
-                          .replace(/{name}/g, previewName)
-                          .replace(/{company_name}/g, previewCompany)
-                          .replace(/{company}/g, previewCompany)
-                        }
-                      </div>
+                      <div 
+                        className="font-sans text-slate-700 whitespace-pre-wrap leading-relaxed bg-[#FAF9F6] p-2.5 rounded border border-slate-100 max-h-[150px] overflow-y-auto text-[11px]"
+                        dangerouslySetInnerHTML={{
+                          __html: (followUps[followUpStage] || '')
+                            .replace(/{name}/g, previewName)
+                            .replace(/{company_name}/g, previewCompany)
+                            .replace(/{company}/g, previewCompany)
+                            .replace(/{{name}}/g, previewName)
+                            .replace(/{{company_name}}/g, previewCompany)
+                            .replace(/{{company}}/g, previewCompany)
+                        }}
+                      />
                     </div>
                   )}
                 </div>
