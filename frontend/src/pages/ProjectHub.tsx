@@ -37,6 +37,9 @@ const ProjectHubPage: React.FC = () => {
   const [memberEmailInputs, setMemberEmailInputs] = useState<Record<string, string>>({});
   const [memberRoleInputs, setMemberRoleInputs] = useState<Record<string, string>>({});
 
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editingProjectName, setEditingProjectName] = useState('');
+
   // Guard: Redirect to login if token is missing
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -127,6 +130,46 @@ const ProjectHubPage: React.FC = () => {
       setErrorMessage(err.message || 'Error creating project.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleRenameProject = async (projectId: string) => {
+    if (!editingProjectName.trim()) return;
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`${API_BASE_URL}/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ name: editingProjectName }),
+      });
+      if (!res.ok) throw new Error('Failed to rename project.');
+      showToast('✏️ Project renamed successfully!');
+      setEditingProjectId(null);
+      await fetchProjectsAndMembers();
+    } catch (err: any) {
+      alert(err.message || 'Error renaming project.');
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string, projectName: string) => {
+    if (!window.confirm(`⚠️ WARNING: Are you sure you want to delete project "${projectName}"? This will permanently delete all associated campaigns, configs, and leads.`)) return;
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`${API_BASE_URL}/projects/${projectId}`, {
+        method: 'DELETE',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Failed to delete project.');
+      showToast(`🗑️ Project "${projectName}" deleted successfully.`);
+      if (localStorage.getItem('selected_project_id') === projectId) {
+        localStorage.removeItem('selected_project_id');
+      }
+      await fetchProjectsAndMembers();
+    } catch (err: any) {
+      alert(err.message || 'Error deleting project.');
     }
   };
 
@@ -265,13 +308,63 @@ const ProjectHubPage: React.FC = () => {
                       
                       {/* Project Meta */}
                       <div className="flex justify-between items-start border-b border-slate-100 pb-3">
-                        <div>
-                          <h3 className="text-base font-bold text-slate-800 tracking-tight line-clamp-1">{p.name}</h3>
-                          <span className="text-[10px] text-slate-400 block mt-0.5">
-                            Created: {new Date(p.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 font-bold text-[9px] uppercase tracking-wider">
+                        {editingProjectId === p.id ? (
+                          <div className="flex-1 mr-2">
+                            <div className="flex gap-1.5 items-center">
+                              <input
+                                type="text"
+                                value={editingProjectName}
+                                onChange={(e) => setEditingProjectName(e.target.value)}
+                                className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#4BA7C9] w-full"
+                              />
+                              <button
+                                onClick={() => handleRenameProject(p.id)}
+                                className="p-1 text-emerald-600 hover:bg-emerald-50 rounded font-bold"
+                                title="Save name"
+                              >
+                                ✓
+                              </button>
+                              <button
+                                onClick={() => setEditingProjectId(null)}
+                                className="p-1 text-slate-400 hover:bg-slate-50 rounded font-bold"
+                                title="Cancel"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex-1 min-w-0 pr-2">
+                            <div className="flex items-center gap-1.5">
+                              <h3 className="text-base font-bold text-slate-800 tracking-tight line-clamp-1">{p.name}</h3>
+                              {authLevel === 'admin' && (
+                                <div className="flex gap-0.5 shrink-0">
+                                  <button
+                                    onClick={() => {
+                                      setEditingProjectId(p.id);
+                                      setEditingProjectName(p.name);
+                                    }}
+                                    className="text-slate-400 hover:text-slate-600 p-0.5 hover:bg-slate-50 rounded text-[10px]"
+                                    title="Edit project name"
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteProject(p.id, p.name)}
+                                    className="text-rose-400 hover:text-rose-600 p-0.5 hover:bg-rose-50 rounded text-[10px]"
+                                    title="Delete project"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-slate-400 block mt-0.5">
+                              Created: {new Date(p.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                        )}
+                        <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 font-bold text-[9px] uppercase tracking-wider shrink-0 mt-0.5">
                           Active
                         </span>
                       </div>

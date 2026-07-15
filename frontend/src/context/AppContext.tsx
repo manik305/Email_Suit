@@ -191,6 +191,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return;
       }
 
+      if (metricsRes.status === 403 || recipientsRes.status === 403 || campaignsRes.status === 403 || configsRes.status === 403) {
+        console.warn('⚠️ Access forbidden. Redirecting to workspace hub.');
+        localStorage.removeItem('selected_project_id');
+        window.location.href = '/projects';
+        return;
+      }
+
       const metrics: AppState['metrics']           = await metricsRes.json();
       const recipients: Recipient[]                 = await recipientsRes.json();
       const campaigns: Campaign[]                   = await campaignsRes.json();
