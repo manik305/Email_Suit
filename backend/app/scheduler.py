@@ -593,8 +593,14 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                 import re
                 has_html = bool(re.search(r'<[a-zA-Z/][^>]*>', body))
                 if has_html:
-                    html_body = body
-                    # Standardize breaks and strip tags
+                    html_body = body.replace("\n", "<br/>")
+                    # Clean up list elements to avoid double br tags inside lists
+                    html_body = html_body.replace("<ul><br/>", "<ul>")
+                    html_body = html_body.replace("<ol><br/>", "<ol>")
+                    html_body = html_body.replace("</li><br/>", "</li>")
+                    html_body = html_body.replace("</ul><br/>", "</ul>")
+                    html_body = html_body.replace("</ol><br/>", "</ol>")
+                    # Standardize breaks and strip tags for plaintext version
                     plain_body = re.sub(r'<br\s*/?>', '\n', body)
                     plain_body = re.sub(r'</p>', '\n\n', plain_body)
                     plain_body = re.sub(r'<[^>]+>', '', plain_body)
