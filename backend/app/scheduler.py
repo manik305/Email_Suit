@@ -944,6 +944,7 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
 async def _run_scheduled_campaigns() -> None:
     """Check for campaigns that are due and fire SMTP sends."""
     from .models import Campaign
+    from app.database import db_pool
 
     try:
         all_campaigns = await Campaign.find().to_list()
@@ -953,28 +954,46 @@ async def _run_scheduled_campaigns() -> None:
 
     candidates = [
         c for c in all_campaigns 
-        if c.status in ["draft", "active"] and c.send_at and c.email_config_id
+        if c.status in ["draft", "active"] and c.email_config_id
     ]
 
     now = datetime.now(timezone.utc)
 
     for campaign in candidates:
-        if not campaign.send_at:
-            continue
-        try:
-            send_dt_str = campaign.send_at.replace("Z", "+00:00")
-            send_dt = datetime.fromisoformat(send_dt_str)
-            if send_dt.tzinfo is None:
-                send_dt = send_dt.replace(tzinfo=timezone.utc)
-        except ValueError:
-            logger.warning("Campaign %s has invalid send_at: %s", campaign.id, campaign.send_at)
-            continue
+        fresh_due = False
+        if campaign.send_at:
+            try:
+                send_dt_str = campaign.send_at.replace("Z", "+00:00")
+                send_dt = datetime.fromisoformat(send_dt_str)
+                if send_dt.tzinfo is None:
+                    send_dt = send_dt.replace(tzinfo=timezone.utc)
+                if send_dt <= now:
+                    fresh_due = True
+            except ValueError:
+                logger.warning("Campaign %s has invalid send_at: %s", campaign.id, campaign.send_at)
 
-        if send_dt > now:
+        # Check if any follow-up is due
+        followups_due = False
+        try:
+            if db_pool:
+                async with db_pool.acquire() as conn:
+                    # Query for any recipient in this campaign due for follow-up (status='sent' and next_follow_up_at <= now)
+                    row = await conn.fetchrow(
+                        "SELECT id FROM public.recipients WHERE campaign_id = $1::uuid AND status = 'sent' AND next_follow_up_at IS NOT NULL AND next_follow_up_at <= $2 LIMIT 1",
+                        campaign.id,
+                        now
+                    )
+                    if row:
+                        followups_due = True
+        except Exception as fe:
+            logger.warning("Failed to query due follow-ups for campaign %s: %s", campaign.id, fe)
+
+        if not fresh_due and not followups_due:
             continue
 
         # Run consolidated daily processor asynchronously
         asyncio.create_task(process_campaign_queue(str(campaign.id)))
+
 
 
 async def update_recipient_send_times(campaign_id: str) -> None:
@@ -987,16 +1006,25 @@ async def update_recipient_send_times(campaign_id: str) -> None:
     if not campaign:
         return
 
+    if campaign.status == "paused" or not campaign.send_at:
+        # Clear estimated send times and reset deferred recipients to pending
+        async with db_pool.acquire() as conn:
+            async with conn.transaction():
+                # Clear send_at for pending
+                await conn.execute(
+                    "UPDATE public.recipients SET send_at = NULL WHERE campaign_id = $1::uuid AND status = 'pending'",
+                    campaign.id
+                )
+                # Reset deferred to pending
+                await conn.execute(
+                    "UPDATE public.recipients SET status = 'pending', send_at = NULL WHERE campaign_id = $1::uuid AND status = 'deferred'",
+                    campaign.id
+                )
+        return
+
     # Fetch all pending recipients
     pending_recipients = await Recipient.find(campaign_id=campaign_id, status="pending").to_list()
 
-    if campaign.status == "paused" or not campaign.send_at:
-        # Clear estimated send times if campaign is paused or has no send_at
-        ids = [r.id for r in pending_recipients]
-        if ids:
-            async with db_pool.acquire() as conn:
-                await conn.execute("UPDATE public.recipients SET send_at = NULL WHERE id = ANY($1::uuid[])", ids)
-        return
 
     try:
         send_dt_str = campaign.send_at.replace("Z", "+00:00")
@@ -1013,6 +1041,10 @@ async def update_recipient_send_times(campaign_id: str) -> None:
         key=lambda r: priority_map.get(get_timezone_from_state(r.state), 5)
     )
 
+    daily_limit = campaign.daily_fresh_limit or 100
+    if daily_limit < 1:
+        daily_limit = 1
+
     mails_per_min = campaign.mails_per_minute or 2
     if mails_per_min < 1:
         mails_per_min = 1
@@ -1020,8 +1052,14 @@ async def update_recipient_send_times(campaign_id: str) -> None:
 
     batch_data = []
     for idx, r in enumerate(pending_recipients):
-        est_send_time = base_time + timedelta(seconds=idx * gap_seconds)
+        day_offset = idx // daily_limit
+        # Add business days, skipping Saturday and Sunday
+        send_day = _add_business_days(base_time, day_offset)
+        # Calculate intra-day offset
+        intra_day_seconds = (idx % daily_limit) * gap_seconds
+        est_send_time = send_day + timedelta(seconds=intra_day_seconds)
         batch_data.append((est_send_time, r.id))
+
 
     if batch_data:
         async with db_pool.acquire() as conn:

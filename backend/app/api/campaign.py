@@ -274,6 +274,17 @@ async def update_campaign(campaign_id: str, payload: schemas.CampaignUpdate, cur
                 raise HTTPException(status_code=404, detail=f"EmailConfig {pool_config_id} in pool not found")
 
     update_data = payload.model_dump(exclude_none=True)
+    if "status" in update_data:
+        if update_data["status"] == "paused":
+            # Clear campaign send_at when pausing
+            update_data["send_at"] = None
+        elif update_data["status"] == "active" and campaign.status == "paused":
+            # If resuming from paused and send_at is currently NULL, default to now so it starts immediately
+            if not campaign.send_at:
+                from datetime import datetime, timezone
+                update_data["send_at"] = datetime.now(timezone.utc).isoformat()
+
+
     if update_data:
         await campaign.update({"$set": update_data})
         if payload.status in ("active", "paused") or payload.max_contacts_per_company is not None:
@@ -283,6 +294,7 @@ async def update_campaign(campaign_id: str, payload: schemas.CampaignUpdate, cur
             if campaign:
                 await apply_company_throttling(campaign_id, campaign.max_contacts_per_company or 1)
                 await update_recipient_send_times(campaign_id)
+
         elif payload.send_at is not None or payload.mails_per_minute is not None:
             from app.scheduler import update_recipient_send_times
             await update_recipient_send_times(campaign_id)
