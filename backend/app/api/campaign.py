@@ -512,8 +512,16 @@ async def get_campaign_inbox(
     """
     campaign = await _get_campaign_or_404(campaign_id)
     
+    # Run IMAP inbox update to sync replies/bounces to PG and Neo4j in real-time
+    try:
+        from app.scheduler import check_imap_inbox_for_updates
+        await check_imap_inbox_for_updates(campaign)
+    except Exception as e:
+        logger.warning("Could not run IMAP updates in get_campaign_inbox: %s", e)
+        
     messages = []
     error_msg = None
+
     
     # 1. Fetch real IMAP messages if IMAP settings are available
     if campaign.email_config_id:

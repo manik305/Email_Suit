@@ -74,6 +74,7 @@ async def upload_data(file: UploadFile = File(...), campaign_id: Optional[str] =
     
     try:
         count = 0
+        duplicates_skipped = 0
         for _, row in df.iterrows():
             email = str(row["mail id"]).strip()
             if not email or '@' not in email or email.lower() == 'nan':
@@ -161,32 +162,17 @@ async def upload_data(file: UploadFile = File(...), campaign_id: Optional[str] =
                 await recipient.insert()
                 count += 1
             else:
-                await existing.update({"$set": {
-                    "name": name or existing.name,
-                    "first_name": first_name or existing.first_name,
-                    "last_name": last_name or existing.last_name,
-                    "alternative_email": alt_email or existing.alternative_email,
-                    "designation": title or existing.designation,
-                    "department": dept or existing.department,
-                    "company_name": company or existing.company_name,
-                    "website": web or existing.website,
-                    "linkedin_id": linkedin or existing.linkedin_id,
-                    "industry": ind or existing.industry,
-                    "state": st or existing.state,
-                    "pin_code": pin or existing.pin_code,
-                    "country": ctry or existing.country,
-                    "region": region or existing.region,
-                }})
-                count += 1
+                duplicates_skipped += 1
                 
         await log_activity(
             action="data_uploaded",
             category="data",
-            summary=f"File '{file.filename}' uploaded with {count} recipients" + (f" to campaign {campaign_id}" if campaign_id else ""),
+            summary=f"File '{file.filename}' uploaded with {count} recipients" + (f" to campaign {campaign_id}" if campaign_id else "") + f" ({duplicates_skipped} duplicates skipped)",
             campaign_id=campaign_id,
-            details={"filename": file.filename, "rows_added": count, "campaign_id": campaign_id},
+            details={"filename": file.filename, "rows_added": count, "duplicates_skipped": duplicates_skipped, "campaign_id": campaign_id},
         )
-        return {"status": "success", "rows_added": count}
+        return {"status": "success", "rows_added": count, "duplicates_skipped": duplicates_skipped}
+
 
     except HTTPException:
         raise

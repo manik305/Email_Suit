@@ -408,21 +408,36 @@ const DataFolderPage: React.FC = () => {
     e.preventDefault(); e.stopPropagation();
     setDragActive(e.type === 'dragenter' || e.type === 'dragover');
   };
+  const handleUpload = async (file: File) => {
+    showToast('⏳ Uploading and processing leads...');
+    try {
+      const res = await uploadFileToBackend(file, selectedCampaignId);
+      if (res && res.success) {
+        showToast(`✅ Ingestion complete: Added ${res.rows_added} leads. Skipped ${res.duplicates_skipped} duplicates.`);
+      } else {
+        showToast(`❌ Upload failed: ${res?.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      showToast(`❌ Upload failed: ${err.message || 'Error'}`);
+    }
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault(); setDragActive(false);
     if (!selectedCampaignId) {
       showToast('❌ Please select a campaign before uploading leads.');
       return;
     }
-    if (e.dataTransfer.files[0]) uploadFileToBackend(e.dataTransfer.files[0], selectedCampaignId);
+    if (e.dataTransfer.files[0]) handleUpload(e.dataTransfer.files[0]);
   };
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!selectedCampaignId) {
       showToast('❌ Please select a campaign before uploading leads.');
       return;
     }
-    if (e.target.files?.[0]) uploadFileToBackend(e.target.files[0], selectedCampaignId);
+    if (e.target.files?.[0]) handleUpload(e.target.files[0]);
   };
+
 
   const handleResetDatabase = async () => {
     if (!window.confirm("⚠️ WARNING: Are you sure you want to completely wipe all tables and reset the database? All campaigns, leads, and configs will be permanently deleted. This cannot be undone.")) {

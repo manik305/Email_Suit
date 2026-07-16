@@ -315,6 +315,123 @@ async def get_available_config(campaign: Any, exclude_locked: bool = True) -> Op
     return candidates[0][1]
 
 
+async def check_imap_inbox_for_updates(campaign) -> None:
+    """Connect to the campaign's active email configs and sync IMAP replies/bounces to PG and Neo4j."""
+    import re
+    from .models import EmailConfig, Recipient, DncEntry
+    from .email_service import fetch_inbox
+    from app.neo4j_sync import sync_lead_response
+    
+    # Get active configs
+    pool = list(campaign.email_config_pool or [])
+    if campaign.email_config_id and campaign.email_config_id not in pool:
+        pool.append(campaign.email_config_id)
+        
+    for config_id in pool:
+        config = await EmailConfig.get(config_id)
+        if not config or not config.is_active or not config.imap:
+            continue
+            
+        try:
+            logger.info("IMAP Sync: Checking inbox for account %s in campaign %s", config.sender_address, campaign.id)
+            # Fetch last 50 emails
+            messages = await fetch_inbox(config, mailbox="INBOX", limit=50)
+            for msg in messages:
+                # 1. Check if it's a bounce
+                is_bounce = (
+                    "delivery status" in msg.subject.lower()
+                    or "undelivered" in msg.subject.lower()
+                    or "undeliverable" in msg.subject.lower()
+                    or "mailer-daemon" in msg.from_addr.lower()
+                    or "postmaster" in msg.from_addr.lower()
+                )
+                if is_bounce:
+                    # Find recipient email in body/snippet/subject
+                    email_match = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', (msg.body or "") + " " + (msg.subject or "") + " " + (msg.snippet or ""))
+                    email_match = {e.lower().strip() for e in email_match}
+                    
+                    for email_found in email_match:
+                        if "mailer-daemon" in email_found or "postmaster" in email_found:
+                            continue
+                        # Find recipient
+                        rec = await Recipient.find_one(email=email_found, campaign_id=str(campaign.id))
+                        if rec and (rec.status != "bounced" or rec.response_category != "bounce"):
+                            logger.info("IMAP Sync: Detected bounce for recipient %s in campaign %s", rec.email, campaign.id)
+                            await rec.update({"$set": {
+                                "status": "bounced",
+                                "response_category": "bounce",
+                                "next_follow_up_at": None,
+                                "max_follow_ups": 0
+                            }})
+                            # Project wide DNC listing
+                            if campaign.project_id:
+                                exists = await DncEntry.find_one(email=rec.email, project_id=str(campaign.project_id))
+                                if not exists:
+                                    dnc = DncEntry(
+                                        email=rec.email,
+                                        reason="bounce",
+                                        source_campaign_id=str(campaign.id),
+                                        project_id=str(campaign.project_id),
+                                        notes=f"Auto-classified as bounce via IMAP background sync. Msg: {msg.subject}",
+                                        classified_by="agentic-scheduler@system"
+                                    )
+                                    await dnc.insert()
+                            
+                            # Neo4j Sync
+                            try:
+                                await sync_lead_response(recipient_id=rec.id, category="bounce", response_text=msg.body or msg.snippet or "")
+                            except Exception as neo_err:
+                                logger.error("IMAP Sync: Neo4j sync failed: %s", neo_err)
+                
+                # 2. Check if it's a regular reply (not a bounce, not from our sender address)
+                else:
+                    sender_email = msg.from_addr
+                    if "<" in sender_email and ">" in sender_email:
+                        sender_email = sender_email.split("<")[1].split(">")[0].strip()
+                    sender_email = sender_email.strip().lower()
+                    
+                    if sender_email == config.sender_address.lower():
+                        continue
+                        
+                    rec = await Recipient.find_one(email=sender_email, campaign_id=str(campaign.id))
+                    if rec and rec.status == "sent":
+                        # Mark as replied, clear follow-ups
+                        logger.info("IMAP Sync: Detected reply from recipient %s in campaign %s", rec.email, campaign.id)
+                        await rec.update({"$set": {
+                            "status": "replied",
+                            "next_follow_up_at": None
+                        }})
+                        # For warm campaign or standard categorization, DNC sync
+                        category = "lead"  # Default classification
+                        if campaign.campaign_type == "warm":
+                            from app.api.chat import classify_response_with_ai
+                            category = classify_response_with_ai(msg.body or msg.snippet or "") or "lead"
+                        
+                        await rec.update({"$set": {"response_category": category}})
+                        
+                        # Project-wide DNC
+                        if campaign.project_id:
+                            exists = await DncEntry.find_one(email=rec.email, project_id=str(campaign.project_id))
+                            if not exists:
+                                dnc = DncEntry(
+                                    email=rec.email,
+                                    reason=category,
+                                    source_campaign_id=str(campaign.id),
+                                    project_id=str(campaign.project_id),
+                                    notes=f"Auto-classified as reply ({category}) via IMAP background sync. Excerpt: {(msg.body or msg.snippet or '')[:100]}",
+                                    classified_by="agentic-scheduler@system"
+                                )
+                                await dnc.insert()
+                                
+                        # Neo4j Sync
+                        try:
+                            await sync_lead_response(recipient_id=rec.id, category=category, response_text=msg.body or msg.snippet or "")
+                        except Exception as neo_err:
+                            logger.error("IMAP Sync: Neo4j sync failed: %s", neo_err)
+        except Exception as e:
+            logger.warning("IMAP Sync: Error fetching inbox for config %s: %s", config.sender_address, e)
+
+
 async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) -> Dict[str, Any]:
     """
     Consolidated campaign queue processor.
@@ -338,6 +455,13 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
         if not campaign:
             logger.warning("Campaign %s not found.", campaign_id)
             return {"sent": 0, "failed": 0, "status": "not_found"}
+
+        # Check IMAP inbox for bounces/replies first
+        try:
+            await check_imap_inbox_for_updates(campaign)
+        except Exception as imap_sync_err:
+            logger.warning("Campaign %s: Failed to sync IMAP inbox during run: %s", campaign.id, imap_sync_err)
+
 
         # ── Strict Weekend Execution Block ──
         # Ensure we do not send any fresh contacts or follow-ups on weekends.
@@ -427,8 +551,40 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                 if ref <= now:
                     due_follow_ups.append(r)
 
+        # Group overdue follow-ups by YYYY-MM-DD of original send_at date in campaign timezone
+        # and only process the oldest batch's follow-ups.
+        if due_follow_ups:
+            def get_send_date_str(rec):
+                if not rec.send_at:
+                    return "unknown"
+                try:
+                    tz_name = campaign.timezone or "America/New_York"
+                    tz = ZoneInfo(tz_name)
+                    send_dt = rec.send_at
+                    if isinstance(send_dt, str):
+                        send_dt = datetime.fromisoformat(send_dt.replace("Z", "+00:00"))
+                    return send_dt.astimezone(tz).strftime("%Y-%m-%d")
+                except Exception:
+                    send_dt = rec.send_at
+                    if isinstance(send_dt, str):
+                        return send_dt[:10]
+                    return send_dt.strftime("%Y-%m-%d")
+
+            due_by_date = collections.defaultdict(list)
+            for r in due_follow_ups:
+                due_by_date[get_send_date_str(r)].append(r)
+
+            sorted_dates = sorted([d for d in due_by_date.keys() if d != "unknown"])
+            if sorted_dates:
+                oldest_date = sorted_dates[0]
+                due_follow_ups = due_by_date[oldest_date]
+                logger.info("Campaign %s: Grouping follow-ups by fresh send date. Processing oldest batch from %s only (%d contacts).", campaign.id, oldest_date, len(due_follow_ups))
+            elif "unknown" in due_by_date:
+                due_follow_ups = due_by_date["unknown"]
+
         # Combine fresh contacts and follow-ups due
         combined_recipients = fresh_recipients + due_follow_ups
+
 
         # ── DNC Filter: Skip any recipients on the project-scoped DNC list ──
         if campaign.project_id:
@@ -697,9 +853,11 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                                 "status": "sent",
                                 "max_follow_ups": max_fu,
                                 "follow_up_count": 0,
-                                "next_follow_up_at": next_time
+                                "next_follow_up_at": next_time,
+                                "send_at": datetime.now(timezone.utc)
                             }
                         })
+
                     else:
                         if next_count >= r.max_follow_ups:
                             await r.update({

@@ -1,29 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAppContext, API_BASE_URL, CreateCampaignPayload, Campaign } from '../context/AppContext';
+import { useAppContext, API_BASE_URL, CreateCampaignPayload, Campaign, Recipient } from '../context/AppContext';
 import { ALL_TIMEZONES, TZ_REGIONS, localToUtc } from '../data/timezones';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface Recipient {
-  id: string;
-  name?: string;
-  first_name?: string;
-  last_name?: string;
-  email: string;
-  alternative_email?: string;
-  designation?: string;
-  department?: string;
-  company_name?: string;
-  website?: string;
-  linkedin_id?: string;
-  industry?: string;
-  state?: string;
-  pin_code?: string;
-  country?: string;
-  region?: string;
-  status: string;
-  send_at?: string;
-  response_category?: string;
-}
+
 interface InboxMsg {
   uid: string;
   subject: string;
@@ -541,7 +521,11 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: 'pending' | 'sent'
             <th className="px-6 py-3">First Name / Email</th>
             <th className="px-6 py-3">Company Name</th>
             <th className="px-6 py-3">Designation</th>
-            {status === 'pending' && <th className="px-6 py-3">Scheduled Send</th>}
+            {status === 'pending' ? (
+              <th className="px-6 py-3">Scheduled Send</th>
+            ) : (
+              <th className="px-6 py-3">Scheduled Follow-up</th>
+            )}
             <th className="px-6 py-3">Status</th>
             <th className="px-6 py-3">Actions</th>
           </tr>
@@ -580,7 +564,7 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: 'pending' | 'sent'
               </td>
               <td className="px-6 py-3 text-slate-400">{r.designation || '—'}</td>
               
-              {status === 'pending' && (
+              {status === 'pending' ? (
                 <td className="px-6 py-3 text-slate-400 font-mono text-[11px]">
                   {r.send_at ? new Date(r.send_at).toLocaleString('en-US', { 
                     timeZone: 'Asia/Kolkata',
@@ -591,7 +575,30 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: 'pending' | 'sent'
                     timeZoneName: 'short'
                   }) : 'Pending launch'}
                 </td>
+              ) : (
+                <td className="px-6 py-3 text-slate-400 font-mono text-[11px]">
+                  {r.next_follow_up_at ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[9px] font-bold text-amber-500 uppercase">
+                        Stage {(r.follow_up_count || 0) + 1}
+                      </span>
+                      <span>
+                        {new Date(r.next_follow_up_at).toLocaleString('en-US', { 
+                          timeZone: 'Asia/Kolkata',
+                          month: 'short', 
+                          day: 'numeric', 
+                          hour: '2-digit', 
+                          minute: '2-digit',
+                          timeZoneName: 'short'
+                        })}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-slate-500">None / Completed</span>
+                  )}
+                </td>
               )}
+
 
               <td className="px-6 py-3">
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${r.status === 'sent' ? 'bg-emerald-500/10 text-emerald-400 font-extrabold' : 'bg-amber-500/10 text-amber-400 font-extrabold'}`}>

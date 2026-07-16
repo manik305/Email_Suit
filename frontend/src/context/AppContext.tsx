@@ -29,8 +29,14 @@ export interface Recipient {
   region?: string;
   status: string;
   campaign_id?: string;
+  response_category?: string;
+  send_at?: string;
+  next_follow_up_at?: string;
+  follow_up_count?: number;
+  max_follow_ups?: number;
   created_at: string;
 }
+
 
 export interface Campaign {
   id: string;
@@ -83,6 +89,17 @@ export interface EmailConfigLegacy {
   lastSync?: string;
 }
 
+export interface Meeting {
+  id: string;
+  title: string;
+  date: string;
+  time: string;
+  attendee_email: string;
+  meet_link?: string;
+  project_id?: string;
+  created_at: string;
+}
+
 interface AppState {
   metrics: {
     totalEmailsSent: number;
@@ -97,8 +114,10 @@ interface AppState {
   campaigns: Campaign[];
   emailConfigs: EmailConfigSummary[];       // full list from /config
   emailConfig: EmailConfigLegacy;           // legacy compat shape
+  meetings: Meeting[];
   isLoading: boolean;
 }
+
 
 export interface CreateCampaignPayload {
   name: string;
@@ -119,7 +138,7 @@ export interface CreateCampaignPayload {
 interface AppContextType {
   state: AppState;
   addFile: (file: UploadedFile) => void;
-  uploadFileToBackend: (file: File, campaignId?: string) => Promise<void>;
+  uploadFileToBackend: (file: File, campaignId?: string) => Promise<{ success: boolean; rows_added?: number; duplicates_skipped?: number; error?: string }>;
   createCampaign: (data: CreateCampaignPayload) => Promise<Campaign | null>;
   updateEmailConfig: (config: EmailConfigLegacy) => void;
   refreshData: () => Promise<void>;
@@ -144,6 +163,7 @@ const initialState: AppState = {
   campaigns: [],
   emailConfigs: [],
   emailConfig: { provider: null, status: 'Disconnected' },
+  meetings: [],
   isLoading: false,
 };
 
@@ -173,15 +193,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const recipientsUrl = storedPid ? `${API_BASE_URL}/data/recipients?project_id=${storedPid}` : `${API_BASE_URL}/data/recipients`;
       const campaignsUrl = storedPid ? `${API_BASE_URL}/campaigns/?project_id=${storedPid}` : `${API_BASE_URL}/campaigns/`;
       const configsUrl = storedPid ? `${API_BASE_URL}/config/?project_id=${storedPid}` : `${API_BASE_URL}/config/`;
+      const meetingsUrl = storedPid ? `${API_BASE_URL}/meetings/list?project_id=${storedPid}` : `${API_BASE_URL}/meetings/list`;
       
-      const [metricsRes, recipientsRes, campaignsRes, configsRes] = await Promise.all([
+      const [metricsRes, recipientsRes, campaignsRes, configsRes, meetingsRes] = await Promise.all([
         fetch(metricsUrl, { headers: authHeaders }),
         fetch(recipientsUrl, { headers: authHeaders }),
         fetch(campaignsUrl, { headers: authHeaders }),
         fetch(configsUrl, { headers: authHeaders }),
+        fetch(meetingsUrl, { headers: authHeaders }),
       ]);
 
-      if (metricsRes.status === 401 || recipientsRes.status === 401 || campaignsRes.status === 401 || configsRes.status === 401) {
+      if (metricsRes.status === 401 || recipientsRes.status === 401 || campaignsRes.status === 401 || configsRes.status === 401 || meetingsRes.status === 401) {
         console.warn('⚠️ Token expired or invalid. Logging out.');
         localStorage.removeItem('access_token');
         localStorage.removeItem('auth_level');
@@ -191,7 +213,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return;
       }
 
-      if (metricsRes.status === 403 || recipientsRes.status === 403 || campaignsRes.status === 403 || configsRes.status === 403) {
+      if (metricsRes.status === 403 || recipientsRes.status === 403 || campaignsRes.status === 403 || configsRes.status === 403 || meetingsRes.status === 403) {
         console.warn('⚠️ Access forbidden. Redirecting to workspace hub.');
         localStorage.removeItem('selected_project_id');
         window.location.href = '/projects';
@@ -202,6 +224,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const recipients: Recipient[]                 = await recipientsRes.json();
       const campaigns: Campaign[]                   = await campaignsRes.json();
       const emailConfigs: EmailConfigSummary[]      = await configsRes.json();
+      const meetingsData                            = await meetingsRes.json();
+      const meetings: Meeting[]                     = meetingsData && Array.isArray(meetingsData.meetings) ? meetingsData.meetings : [];
 
       const activeConfig = emailConfigs.find(c => c.is_active);
 
@@ -215,6 +239,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         recipients,
         campaigns,
         emailConfigs,
+        meetings,
         emailConfig: activeConfig
           ? {
               provider: activeConfig.provider as any,
@@ -225,6 +250,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           : prev.emailConfig,
         isLoading: false,
       }));
+
     } catch (error) {
       console.error('Failed to fetch app data:', error);
       setState(prev => ({ ...prev, isLoading: false }));
@@ -240,7 +266,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addFile = (file: UploadedFile) =>
     setState(prev => ({ ...prev, files: [file, ...prev.files] }));
 
-  const uploadFileToBackend = async (file: File, campaignId?: string) => {
+  const uploadFileToBackend = async (file: File, campaignId?: string): Promise<{ success: boolean; rows_added?: number; duplicates_skipped?: number; error?: string }> => {
     const formData = new FormData();
     formData.append('file', file);
     if (campaignId) {
@@ -252,11 +278,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         body: formData,
         headers: getAuthHeaders(),
       });
-      if (res.ok) await refreshData();
-    } catch (err) {
+      if (res.ok) {
+        await refreshData();
+        const data = await res.json();
+        return {
+          success: true,
+          rows_added: data.rows_added,
+          duplicates_skipped: data.duplicates_skipped,
+        };
+      } else {
+        const errText = await res.text();
+        return { success: false, error: errText };
+      }
+    } catch (err: any) {
       console.error('Upload failed:', err);
+      return { success: false, error: err.message || 'Network error' };
     }
   };
+
 
   const createCampaign = async (data: CreateCampaignPayload): Promise<Campaign | null> => {
     try {

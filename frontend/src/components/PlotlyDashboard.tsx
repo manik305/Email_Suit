@@ -267,41 +267,67 @@ export const PlotlyDashboard: React.FC = () => {
             <thead>
               <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
                 <th className="pb-3 pt-2 font-bold">Campaign Name</th>
-                <th className="pb-3 pt-2 font-bold">Target Segment</th>
-                <th className="pb-3 pt-2 font-bold">Linked Mailer</th>
-                <th className="pb-3 pt-2 font-bold">Created Date</th>
+                <th className="pb-3 pt-2 font-bold text-center">Companies</th>
+                <th className="pb-3 pt-2 font-bold text-center">Contacts</th>
+                <th className="pb-3 pt-2 font-bold text-center">Leads</th>
+                <th className="pb-3 pt-2 font-bold text-center">Hot</th>
+                <th className="pb-3 pt-2 font-bold text-center">Meetings</th>
+                <th className="pb-3 pt-2 font-bold text-center">Cold</th>
+                <th className="pb-3 pt-2 font-bold text-center">Negative</th>
+                <th className="pb-3 pt-2 font-bold text-center">Bounced</th>
                 <th className="pb-3 pt-2 font-bold">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {campaigns.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-6 text-center text-slate-400 font-medium">
+                  <td colSpan={10} className="py-6 text-center text-slate-400 font-medium">
                     No campaigns created yet. Start by setting up a campaign.
                   </td>
                 </tr>
               ) : (
-                campaigns.map(c => (
-                  <tr key={c.id} className="text-slate-700 hover:bg-slate-50/50 transition-colors">
-                    <td className="py-3 font-semibold text-slate-900">{c.name}</td>
-                    <td className="py-3 text-slate-500">{c.target_segment || 'All Leads'}</td>
-                    <td className="py-3 text-slate-500">{c.email_config_id ? '✔️ Linked' : '❌ Unlinked'}</td>
-                    <td className="py-3 text-slate-400">{new Date(c.created_at).toLocaleDateString()}</td>
-                    <td className="py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
-                        c.status === 'active' 
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' 
-                          : 'bg-slate-100 text-slate-650 border border-slate-200'
-                      }`}>
-                        {c.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                campaigns.map(c => {
+                  const campaignRecipients = recipients.filter(r => r.campaign_id === c.id);
+                  const companies = new Set(campaignRecipients.map(r => r.company_name).filter(Boolean)).size;
+                  const contacts = campaignRecipients.length;
+                  
+                  const leadsCount = campaignRecipients.filter(r => r.response_category === 'lead').length;
+                  const hotCount = campaignRecipients.filter(r => r.response_category === 'hot').length;
+                  const coldCount = campaignRecipients.filter(r => r.response_category === 'cold').length;
+                  const negativeCount = campaignRecipients.filter(r => r.response_category === 'negative').length;
+                  const bouncedCount = campaignRecipients.filter(r => r.status === 'bounced').length;
+
+                  const recipientEmails = new Set(campaignRecipients.map(r => r.email.toLowerCase()));
+                  const meetingsCount = (state.meetings || []).filter(m => recipientEmails.has(m.attendee_email.toLowerCase())).length;
+
+                  return (
+                    <tr key={c.id} className="text-slate-700 hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3 font-semibold text-slate-900">{c.name}</td>
+                      <td className="py-3 text-slate-500 text-center font-bold">{companies}</td>
+                      <td className="py-3 text-slate-500 text-center font-bold">{contacts}</td>
+                      <td className="py-3 text-slate-550 text-center font-semibold text-teal-600">{leadsCount}</td>
+                      <td className="py-3 text-slate-550 text-center font-semibold text-amber-500">{hotCount}</td>
+                      <td className="py-3 text-slate-550 text-center font-semibold text-emerald-600">{meetingsCount}</td>
+                      <td className="py-3 text-slate-550 text-center font-semibold text-blue-500">{coldCount}</td>
+                      <td className="py-3 text-slate-550 text-center font-semibold text-red-500">{negativeCount}</td>
+                      <td className="py-3 text-slate-550 text-center font-semibold text-slate-400">{bouncedCount}</td>
+                      <td className="py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                          c.status === 'active' 
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' 
+                            : 'bg-slate-100 text-slate-650 border border-slate-200'
+                        }`}>
+                          {c.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
+
       </div>
 
       {/* 2D Graphical Representation (Plotly 2D visual panels) */}

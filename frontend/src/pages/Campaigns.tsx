@@ -795,6 +795,30 @@ const CampaignsPage: React.FC = () => {
                   const contacts = campaignRecipients.length;
                   const sent = campaignRecipients.filter(r => r.status === 'sent').length;
 
+                  // Dynamic categories:
+                  const hot = campaignRecipients.filter(r => r.response_category === 'hot').length;
+                  const cold = campaignRecipients.filter(r => r.response_category === 'cold').length;
+                  const negative = campaignRecipients.filter(r => r.response_category === 'negative').length;
+                  const leads = campaignRecipients.filter(r => r.response_category === 'lead').length;
+                  const bounced = campaignRecipients.filter(r => r.status === 'bounced').length;
+
+                  // Meetings count: attendee email matches campaign recipients
+                  const recipientEmails = new Set(campaignRecipients.map(r => r.email.toLowerCase()));
+                  const meetingsCount = (state.meetings || []).filter(m => recipientEmails.has(m.attendee_email.toLowerCase())).length;
+
+                  // Gauges:
+                  // 1. Prioritized (pending vs deferred)
+                  const pending = campaignRecipients.filter(r => r.status === 'pending').length;
+                  const deferred = campaignRecipients.filter(r => r.status === 'deferred').length;
+                  const totalEligible = pending + deferred;
+                  const prioritizedPercent = totalEligible > 0 ? Math.round((pending / totalEligible) * 100) : 0;
+                  
+                  // 2. Scheduled (follow-ups scheduled)
+                  const scheduledFollowUps = campaignRecipients.filter(r => r.status === 'sent' && r.next_follow_up_at).length;
+
+                  // 3. Slots (daily fresh limit)
+                  const slots = c.daily_fresh_limit ?? 100;
+
                   return (
                     <div
                       key={c.id}
@@ -855,25 +879,37 @@ const CampaignsPage: React.FC = () => {
                           <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Hot
                           </span>
-                          <span className="font-bold text-slate-700">0</span>
+                          <span className="font-bold text-slate-700">{hot}</span>
                         </div>
                         <div className="flex items-center justify-between p-1.5 bg-[#EAF5EC] rounded-lg">
                           <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Meetings
                           </span>
-                          <span className="font-bold text-slate-700">0</span>
+                          <span className="font-bold text-slate-700">{meetingsCount}</span>
                         </div>
                         <div className="flex items-center justify-between p-1.5 bg-[#EAF2F8] rounded-lg">
                           <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-400" /> Cold
                           </span>
-                          <span className="font-bold text-slate-700">0</span>
+                          <span className="font-bold text-slate-700">{cold}</span>
                         </div>
                         <div className="flex items-center justify-between p-1.5 bg-[#FCE8E6] rounded-lg">
                           <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-400" /> Negative
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" /> Negative
                           </span>
-                          <span className="font-bold text-slate-700">0</span>
+                          <span className="font-bold text-slate-700">{negative}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-1.5 bg-[#e2f0ed] rounded-lg">
+                          <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
+                            <span className="w-1.5 h-1.5 rounded-full bg-teal-400" /> Leads
+                          </span>
+                          <span className="font-bold text-slate-700">{leads}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-1.5 bg-[#f1f5f9] rounded-lg">
+                          <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> Bounced
+                          </span>
+                          <span className="font-bold text-slate-700">{bounced}</span>
                         </div>
                       </div>
 
@@ -886,8 +922,8 @@ const CampaignsPage: React.FC = () => {
                           <div className="flex flex-col items-center">
                             <svg className="w-10 h-10" viewBox="0 0 36 36">
                               <path className="text-slate-200" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                              <path className="text-[#A294CC]" strokeWidth="3.5" strokeDasharray="0, 100" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                              <text x="18" y="20.5" className="text-[9px] font-bold text-slate-700" textAnchor="middle">0%</text>
+                              <path className="text-[#A294CC]" strokeWidth="3.5" strokeDasharray={`${prioritizedPercent}, 100`} strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                              <text x="18" y="20.5" className="text-[9px] font-bold text-slate-700" textAnchor="middle">{prioritizedPercent}%</text>
                             </svg>
                             <span className="text-[7px] font-bold text-slate-400 uppercase mt-1">Prioritized</span>
                           </div>
@@ -896,8 +932,8 @@ const CampaignsPage: React.FC = () => {
                           <div className="flex flex-col items-center">
                             <svg className="w-10 h-10" viewBox="0 0 36 36">
                               <path className="text-slate-200" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                              <path className="text-[#8B5CF6]" strokeWidth="3.5" strokeDasharray="0, 100" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                              <text x="18" y="20.5" className="text-[9px] font-bold text-slate-700" textAnchor="middle">0</text>
+                              <path className="text-[#8B5CF6]" strokeWidth="3.5" strokeDasharray={`${scheduledFollowUps > 0 ? 100 : 0}, 100`} strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                              <text x="18" y="20.5" className="text-[9px] font-bold text-slate-700" textAnchor="middle">{scheduledFollowUps}</text>
                             </svg>
                             <span className="text-[7px] font-bold text-slate-400 uppercase mt-1">Scheduled</span>
                           </div>
@@ -906,14 +942,15 @@ const CampaignsPage: React.FC = () => {
                           <div className="flex flex-col items-center">
                             <svg className="w-10 h-10" viewBox="0 0 36 36">
                               <path className="text-slate-200" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                              <path className="text-[#8B5CF6]" strokeWidth="3.5" strokeDasharray="0, 100" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                              <text x="18" y="20.5" className="text-[8px] font-bold text-slate-700" textAnchor="middle">0</text>
+                              <path className="text-[#8B5CF6]" strokeWidth="3.5" strokeDasharray={`${slots > 0 ? 100 : 0}, 100`} strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                              <text x="18" y="20.5" className="text-[8px] font-bold text-slate-700" textAnchor="middle">{slots}</text>
                             </svg>
                             <span className="text-[7px] font-bold text-slate-400 uppercase mt-1">Slots</span>
                           </div>
 
                         </div>
                       </div>
+
 
                     {/* Card Footer: quick tools */}
                     <div className="flex justify-end items-center pt-3 border-t border-slate-100 text-[10px]">
