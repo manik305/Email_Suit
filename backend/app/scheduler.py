@@ -496,6 +496,28 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                 await update_recipient_send_times(campaign.id)
                 return {"sent": 0, "failed": 0, "status": "paused"}
 
+        # Check if there are any active configs in the pool or primary config
+        pool: list = list(campaign.email_config_pool or [])
+        if campaign.email_config_id and campaign.email_config_id not in pool:
+            pool.append(campaign.email_config_id)
+            
+        configs_loaded = []
+        for config_id in pool:
+            cfg = await EmailConfig.get(config_id)
+            if cfg:
+                configs_loaded.append(cfg)
+                
+        active_configs = [c for c in configs_loaded if c.is_active]
+        if not active_configs:
+            logger.warning("Campaign %s: All attached email configurations are inactive.", campaign_id)
+            await campaign.update({"$set": {
+                "status": "paused",
+                "diagnostic_error": "All attached email configurations are inactive. Please activate them or link an active one."
+            }})
+            await update_recipient_send_times(campaign.id)
+            _active_campaign_runs.discard(campaign_id)
+            return {"sent": 0, "failed": 0, "status": "paused"}
+
         # Select best available config from pool (quota-aware and lock-aware)
         current_config = await get_available_config(campaign, exclude_locked=True)
         if not current_config:

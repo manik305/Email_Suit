@@ -196,6 +196,25 @@ const EmailConfigPanel: React.FC<Props> = ({ campaignId, linkedConfigId, onLinke
     setLinking(false);
   };
 
+  // ── Toggle active status ───────────────────────────────────────────────────
+  const handleToggleActive = async (c: EmailConfigSummary) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/config/${c.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !c.is_active }),
+      });
+      if (res.ok) {
+        showToast(`✅ Config "${c.name}" is now ${!c.is_active ? 'Active' : 'Inactive'}.`);
+        await loadConfigs();
+      } else {
+        showToast('❌ Failed to update active status.');
+      }
+    } catch {
+      showToast('❌ Network error.');
+    }
+  };
+
   // ── Delete config ──────────────────────────────────────────────────────────
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this email config?')) return;
@@ -259,17 +278,26 @@ const EmailConfigPanel: React.FC<Props> = ({ campaignId, linkedConfigId, onLinke
             <div key={c.id}
               className={`flex items-center justify-between p-3 rounded-xl border transition-all ${c.id === linkedConfigId ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900/40 border-slate-700/50'}`}>
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-200 truncate">{c.name}</p>
+                <p className="text-sm font-semibold text-slate-200 truncate flex items-center gap-2">
+                  {c.name}
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${c.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                    {c.is_active ? 'Enabled' : 'Disabled'}
+                  </span>
+                </p>
                 <p className="text-xs text-slate-500">{c.sender_address} · {c.provider} · SMTP:{c.smtp_host}:{c.smtp_port}</p>
               </div>
               <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                <button onClick={() => handleToggleActive(c)}
+                  className={`text-xs px-2 py-1 rounded-lg transition-all font-medium ${c.is_active ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300'}`}>
+                  {c.is_active ? 'Disable' : 'Enable'}
+                </button>
                 {c.id !== linkedConfigId ? (
                   <button onClick={() => handleLink(c.id)} disabled={linking}
                     className="text-xs px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all disabled:opacity-50">
                     Use This
                   </button>
                 ) : (
-                  <span className="text-xs text-emerald-400 font-bold">Active ✓</span>
+                  <span className="text-xs text-emerald-400 font-bold">Linked ✓</span>
                 )}
                 <button onClick={() => startEdit(c)} className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-all">Edit</button>
                 <button onClick={() => handleDelete(c.id)} className="text-xs px-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-all">✕</button>
