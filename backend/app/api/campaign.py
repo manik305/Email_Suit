@@ -611,59 +611,8 @@ async def get_campaign_inbox(
             if dnc_entry:
                 msg.response_category = dnc_entry.reason
 
-    # 5. Agentic Auto-Classification for Warm Campaigns
-    if campaign.campaign_type == "warm":
-        from app.api.chat import classify_response_with_ai
-        from app.neo4j_sync import sync_lead_response
-        for msg in messages:
-            if msg.response_category:
-                continue
-            sender_email = msg.from_addr
-            if "<" in sender_email and ">" in sender_email:
-                sender_email = sender_email.split("<")[1].split(">")[0].strip()
-            sender_email = sender_email.strip().lower()
-            
-            # Find recipient in this campaign
-            rec = await models.Recipient.find_one(email=sender_email, campaign_id=campaign_id)
-            if rec and not rec.response_category:
-                email_body = msg.body or msg.snippet or ""
-                category = classify_response_with_ai(email_body)
-                if category:
-                    msg.response_category = category
-                    # Sync to Neo4j and update Postgres
-                    try:
-                        await sync_lead_response(
-                            recipient_id=rec.id,
-                            category=category,
-                            response_text=email_body
-                        )
-                    except Exception as neo_err:
-                        logger.error("Failed to sync auto-classified warm response to Neo4j: %s", neo_err)
-                        
-                    # Also create a DNC entry for project-wide opt-out / classification context
-                    try:
-                        if campaign.project_id:
-                            # Avoid duplicate DNC entries
-                            exists = await models.DncEntry.find_one(email=sender_email, project_id=campaign.project_id)
-                            if not exists:
-                                dnc = models.DncEntry(
-                                    email=sender_email,
-                                    reason=category,
-                                    source_campaign_id=campaign_id,
-                                    project_id=campaign.project_id,
-                                    notes=f"Auto-classified by Agentic Framework. Excerpt: {email_body[:100]}",
-                                    classified_by="agentic-framework@system"
-                                )
-                                await dnc.insert()
-                            else:
-                                await exists.update({"$set": {
-                                    "reason": category,
-                                    "source_campaign_id": campaign_id,
-                                    "notes": f"Auto-reclassified by Agentic Framework. Excerpt: {email_body[:100]}",
-                                    "classified_by": "agentic-framework@system"
-                                }})
-                    except Exception as dnc_err:
-                        logger.error("Failed to insert auto-classified DNC entry: %s", dnc_err)
+    # 5. Manual Classification - auto-classification disabled per user request
+    pass
 
     return schemas.InboxResponse(
         campaign_id=campaign_id,

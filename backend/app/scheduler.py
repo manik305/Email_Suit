@@ -440,19 +440,32 @@ async def check_imap_inbox_for_updates(campaign) -> None:
                         
                     rec = await Recipient.find_one(email=sender_email, campaign_id=str(campaign.id))
                     if rec and rec.status == "sent":
+                        # Detect if it's an auto-reply (e.g. out of office)
+                        subject_lower = msg.subject.lower()
+                        is_auto_reply = (
+                            "out of office" in subject_lower
+                            or "out of the office" in subject_lower
+                            or "automatic reply" in subject_lower
+                            or "auto reply" in subject_lower
+                            or "auto-reply" in subject_lower
+                            or "autoresponse" in subject_lower
+                            or "vacation reply" in subject_lower
+                            or "vacation notification" in subject_lower
+                            or "autoreply" in subject_lower
+                            or "away from office" in subject_lower
+                            or "automatic response" in subject_lower
+                        )
+                        if is_auto_reply:
+                            logger.info("IMAP Sync: Detected auto-reply (out of office) from %s, ignoring to keep follow-up sequence active.", rec.email)
+                            continue
+
                         # Mark as replied, clear follow-ups
-                        logger.info("IMAP Sync: Detected reply from recipient %s in campaign %s", rec.email, campaign.id)
+                        logger.info("IMAP Sync: Detected real reply from recipient %s in campaign %s", rec.email, campaign.id)
                         await rec.update({"$set": {
                             "status": "replied",
-                            "next_follow_up_at": None
+                            "next_follow_up_at": None,
+                            "response_category": None  # Left as None/unclassified for manual user labeling
                         }})
-                        # For warm campaign or standard categorization, DNC sync
-                        category = "lead"  # Default classification
-                        if campaign.campaign_type == "warm":
-                            from app.api.chat import classify_response_with_ai
-                            category = classify_response_with_ai(msg.body or msg.snippet or "") or "lead"
-                        
-                        await rec.update({"$set": {"response_category": category}})
                         
                         # Project-wide DNC
                         if campaign.project_id:
@@ -460,17 +473,17 @@ async def check_imap_inbox_for_updates(campaign) -> None:
                             if not exists:
                                 dnc = DncEntry(
                                     email=rec.email,
-                                    reason=category,
+                                    reason="lead",  # Default reason for Project-wide DNC list
                                     source_campaign_id=str(campaign.id),
                                     project_id=str(campaign.project_id),
-                                    notes=f"Auto-classified as reply ({category}) via IMAP background sync. Excerpt: {(msg.body or msg.snippet or '')[:100]}",
+                                    notes=f"Auto-added to DNC via IMAP reply detection. Msg: {msg.subject}",
                                     classified_by="agentic-scheduler@system"
                                 )
                                 await dnc.insert()
                                 
                         # Neo4j Sync
                         try:
-                            await sync_lead_response(recipient_id=rec.id, category=category, response_text=msg.body or msg.snippet or "")
+                            await sync_lead_response(recipient_id=rec.id, category="replied", response_text=msg.body or msg.snippet or "")
                         except Exception as neo_err:
                             logger.error("IMAP Sync: Neo4j sync failed: %s", neo_err)
         except Exception as e:
