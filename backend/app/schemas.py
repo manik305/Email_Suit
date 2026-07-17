@@ -105,6 +105,7 @@ class Recipient(RecipientBase):
     open_count: int = 0
     click_count: int = 0
     send_at: Optional[datetime] = None
+    last_sent_at: Optional[datetime] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
@@ -306,6 +307,7 @@ class DncEntryOut(BaseModel):
 class CampaignAnalyticsDetail(BaseModel):
     total_recipients: int = 0
     total_sent: int = 0
+    total_sent_today: int = 0
     total_pending: int = 0
     total_bounced: int = 0
     total_responded: int = 0

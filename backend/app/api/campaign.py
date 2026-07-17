@@ -702,12 +702,24 @@ async def get_analytics_detail(
     total_followups_sent = sum(r.follow_up_count for r in recipients)
     total_followups_pending = len([r for r in recipients if r.status == "sent" and r.next_follow_up_at])
 
+    from datetime import datetime, timezone
+    today_utc = datetime.now(timezone.utc).date()
+    sent_today = 0
+    for r in recipients:
+        if r.last_sent_at:
+            ref = r.last_sent_at
+            if ref.tzinfo is None:
+                ref = ref.replace(tzinfo=timezone.utc)
+            if ref.astimezone(timezone.utc).date() == today_utc:
+                sent_today += 1
+
     delivery_rate = round((sent / total * 100), 1) if total > 0 else 0.0
     response_rate = round((total_responded / sent * 100), 1) if sent > 0 else 0.0
 
     return schemas.CampaignAnalyticsDetail(
         total_recipients=total,
         total_sent=sent,
+        total_sent_today=sent_today,
         total_pending=pending,
         total_bounced=bounced,
         total_responded=total_responded,

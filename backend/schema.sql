@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS public.recipients (
     open_count INTEGER DEFAULT 0 NOT NULL,
     click_count INTEGER DEFAULT 0 NOT NULL,
     send_at TIMESTAMP WITH TIME ZONE,
+    last_sent_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

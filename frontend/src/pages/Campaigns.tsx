@@ -800,6 +800,8 @@ const CampaignsPage: React.FC = () => {
                   const companies = new Set(campaignRecipients.map(r => r.company_name).filter(Boolean)).size;
                   const contacts = campaignRecipients.length;
                   const sent = campaignRecipients.filter(r => r.status === 'sent').length;
+                  const todayStr = new Date().toDateString();
+                  const sentToday = campaignRecipients.filter(r => r.last_sent_at && new Date(r.last_sent_at).toDateString() === todayStr).length;
 
                   // Dynamic categories:
                   const hot = campaignRecipients.filter(r => r.response_category === 'hot').length;
@@ -864,18 +866,22 @@ const CampaignsPage: React.FC = () => {
                       </div>
 
                       {/* Stats counters */}
-                      <div className="grid grid-cols-3 gap-2 py-3 border-t border-b border-slate-150 mb-4 text-center">
+                      <div className="grid grid-cols-4 gap-2 py-3 border-t border-b border-slate-150 mb-4 text-center">
                         <div>
                           <span className="text-[9px] text-slate-400 block uppercase font-medium">Companies</span>
-                          <span className="text-sm font-black text-slate-800">{companies}</span>
+                          <span className="text-xs font-black text-slate-800">{companies}</span>
                         </div>
                         <div>
                           <span className="text-[9px] text-slate-400 block uppercase font-medium">Contacts</span>
-                          <span className="text-sm font-black text-slate-800">{contacts}</span>
+                          <span className="text-xs font-black text-slate-800">{contacts}</span>
                         </div>
                         <div>
-                          <span className="text-[9px] text-slate-400 block uppercase font-medium">Email Sent</span>
-                          <span className="text-sm font-black text-slate-800">{sent}</span>
+                          <span className="text-[9px] text-slate-400 block uppercase font-medium">Total Sent</span>
+                          <span className="text-xs font-black text-slate-800">{sent}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 block uppercase font-medium text-sky-500">Sent Today</span>
+                          <span className="text-xs font-black text-sky-600">{sentToday}</span>
                         </div>
                       </div>
 

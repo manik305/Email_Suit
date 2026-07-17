@@ -37,6 +37,7 @@ class Recipient(PostgresModel):
     open_count: int = 0
     click_count: int = 0
     send_at: Optional[datetime] = None
+    last_sent_at: Optional[datetime] = None
     response_category: Optional[str] = None  # 'lead' | 'hot' | 'cold' | 'negative' | 'bounce'
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

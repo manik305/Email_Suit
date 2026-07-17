@@ -17,6 +17,7 @@ interface InboxMsg {
 interface AnalyticsDetail {
   total_recipients: number;
   total_sent: number;
+  total_sent_today: number;
   total_pending: number;
   total_bounced: number;
   total_responded: number;
@@ -825,7 +826,8 @@ const AnalyticsPanel: React.FC<{ campaign: Campaign }> = ({ campaign }) => {
   // Basic stats
   const basicStats = [
     { label: 'Total Recipients', value: total, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
-    { label: 'Emails Sent',      value: sent,  color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+    { label: 'Emails Sent (Total)', value: sent,  color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+    { label: 'Sent Today',        value: detail ? detail.total_sent_today : 0, color: 'text-sky-400', bg: 'bg-sky-500/10' },
     { label: 'Pending / Queued', value: pending,color:'text-amber-400', bg: 'bg-amber-500/10' },
     { label: 'Bounced',          value: bounced,color:'text-red-400', bg: 'bg-red-500/10' },
     { label: 'Delivery Rate',    value: total ? `${Math.round((sent/total)*100)}%` : '—', color:'text-purple-400', bg: 'bg-purple-500/10' },
@@ -843,7 +845,7 @@ const AnalyticsPanel: React.FC<{ campaign: Campaign }> = ({ campaign }) => {
   return (
     <div className="p-6 space-y-6">
       {/* Basic Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         {basicStats.map(s => (
           <div key={s.label} className={`${s.bg} rounded-xl p-4 text-center`}>
             <p className={`text-3xl font-black ${s.color}`}>{s.value}</p>

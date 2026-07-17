@@ -887,7 +887,8 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                                 "max_follow_ups": max_fu,
                                 "follow_up_count": 0,
                                 "next_follow_up_at": next_time,
-                                "send_at": datetime.now(timezone.utc)
+                                "send_at": datetime.now(timezone.utc),
+                                "last_sent_at": datetime.now(timezone.utc)
                             }
                         })
 
@@ -896,7 +897,8 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                             await r.update({
                                 "$set": {
                                     "follow_up_count": next_count,
-                                    "next_follow_up_at": None
+                                    "next_follow_up_at": None,
+                                    "last_sent_at": datetime.now(timezone.utc)
                                 }
                             })
                         else:
@@ -904,7 +906,8 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                             await r.update({
                                 "$set": {
                                     "follow_up_count": next_count,
-                                    "next_follow_up_at": next_time
+                                    "next_follow_up_at": next_time,
+                                    "last_sent_at": datetime.now(timezone.utc)
                                 }
                             })
                     sent += 1
