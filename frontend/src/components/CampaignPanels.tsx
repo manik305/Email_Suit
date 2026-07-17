@@ -455,28 +455,59 @@ const InboxPanel: React.FC<{ campaignId: string; projectId?: string }> = ({ camp
 };
 
 // ─── Sub-panel: Recipients by status ─────────────────────────────────────────
-const RecipientsPanel: React.FC<{ campaignId: string; status: 'pending' | 'sent' }> = ({ campaignId, status }) => {
+const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ campaignId, status }) => {
   const [list, setList] = useState<Recipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ first_name: '', company_name: '' });
+  const [currentFilter, setCurrentFilter] = useState<string>(status);
+
+  // Sync state if prop changes
+  useEffect(() => {
+    setCurrentFilter(status);
+  }, [status]);
   
   // States for Draft Preview Modal
   const [previewMsg, setPreviewMsg] = useState<{ subject: string; body: string } | null>(null);
   const [selectedRecipient, setSelectedRecipient] = useState<Recipient | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
 
-  const label = status === 'pending' ? 'Drafts (Queued)' : 'Sent';
+  const labelMap: Record<string, string> = {
+    all: 'All Prospects',
+    pending: 'Drafts (Queued)',
+    sent: 'Sent',
+    bounced: 'Bounced (Technical)',
+    replied: 'Replied',
+    hot: 'Hot Classification',
+    cold: 'Cold Classification',
+    lead: 'Lead Classification',
+    negative: 'Negative Classification',
+    bounce: 'Bounce Classification'
+  };
+
+  const label = labelMap[currentFilter] || currentFilter;
 
   const fetchRecipients = useCallback(() => {
     setLoading(true);
     fetch(`${API_BASE_URL}/data/recipients/by-campaign/${campaignId}`)
       .then(r => r.json())
       .then((all: Recipient[]) => {
-        setList(all.filter(r => r.status === status));
+        let filtered = all;
+        if (currentFilter === 'pending') {
+          filtered = all.filter(r => r.status === 'pending');
+        } else if (currentFilter === 'sent') {
+          filtered = all.filter(r => r.status === 'sent');
+        } else if (currentFilter === 'bounced') {
+          filtered = all.filter(r => r.status === 'bounced');
+        } else if (currentFilter === 'replied') {
+          filtered = all.filter(r => r.status === 'replied');
+        } else if (['hot', 'cold', 'lead', 'negative', 'bounce'].includes(currentFilter)) {
+          filtered = all.filter(r => r.response_category === currentFilter);
+        }
+        setList(filtered);
         setLoading(false);
       });
-  }, [campaignId, status]);
+  }, [campaignId, currentFilter]);
 
   useEffect(() => {
     fetchRecipients();
@@ -514,25 +545,54 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: 'pending' | 'sent'
   };
 
   if (loading) return <p className="text-slate-500 text-sm py-8 text-center">Loading…</p>;
-  if (!list.length) return <p className="text-slate-500 text-sm py-8 text-center">No {label.toLowerCase()} emails.</p>;
 
   return (
     <div className="overflow-x-auto space-y-4">
-      <table className="w-full text-left text-sm">
-        <thead>
-          <tr className="text-[11px] uppercase tracking-wider text-slate-500 bg-slate-900/40">
-            <th className="px-6 py-3">First Name / Email</th>
-            <th className="px-6 py-3">Company Name</th>
-            <th className="px-6 py-3">Designation</th>
-            {status === 'pending' ? (
-              <th className="px-6 py-3">Scheduled Send</th>
-            ) : (
-              <th className="px-6 py-3">Scheduled Follow-up</th>
-            )}
-            <th className="px-6 py-3">Status</th>
-            <th className="px-6 py-3">Actions</th>
-          </tr>
-        </thead>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-2 border-b border-slate-100 gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Prospects List</h3>
+          <p className="text-[10px] text-slate-400">Viewing filtered prospects for this campaign</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="recipients-filter" className="text-[10px] font-bold text-slate-400 uppercase">Filter:</label>
+          <select
+            id="recipients-filter"
+            value={currentFilter}
+            onChange={(e) => setCurrentFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-650 focus:outline-none"
+          >
+            <option value="all">All Prospects</option>
+            <option value="pending">Drafts / Pending</option>
+            <option value="sent">Sent</option>
+            <option value="bounced">Bounced (Technical)</option>
+            <option value="replied">Replied</option>
+            <option value="hot">🔥 Hot Leads</option>
+            <option value="cold">❄️ Cold</option>
+            <option value="lead">🟢 Leads</option>
+            <option value="negative">👎 Negative</option>
+            <option value="bounce">🚫 Bounce Classified</option>
+          </select>
+        </div>
+      </div>
+
+      {!list.length ? (
+        <p className="text-slate-500 text-sm py-8 text-center">No {label.toLowerCase()} emails found.</p>
+      ) : (
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="text-[11px] uppercase tracking-wider text-slate-500 bg-slate-900/40">
+              <th className="px-6 py-3">First Name / Email</th>
+              <th className="px-6 py-3">Company Name</th>
+              <th className="px-6 py-3">Designation</th>
+              {currentFilter === 'pending' ? (
+                <th className="px-6 py-3">Scheduled Send</th>
+              ) : (
+                <th className="px-6 py-3">Scheduled Follow-up</th>
+              )}
+              <th className="px-6 py-3">Status</th>
+              <th className="px-6 py-3">Actions</th>
+            </tr>
+          </thead>
         <tbody className="divide-y divide-slate-700/20">
           {list.map(r => (
             <tr key={r.id} className="hover:bg-indigo-500/5 transition-colors">
@@ -567,7 +627,7 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: 'pending' | 'sent'
               </td>
               <td className="px-6 py-3 text-slate-400">{r.designation || '—'}</td>
               
-              {status === 'pending' ? (
+              {currentFilter === 'pending' ? (
                 <td className="px-6 py-3 text-slate-400 font-mono text-[11px]">
                   {r.send_at ? new Date(r.send_at).toLocaleString('en-US', { 
                     timeZone: 'Asia/Kolkata',
@@ -649,6 +709,7 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: 'pending' | 'sent'
           ))}
         </tbody>
       </table>
+      )}
 
       {/* ─── Draft Preview Modal ─────────────────────────────────────────────── */}
       {previewMsg && (

@@ -108,6 +108,7 @@ const CampaignsPage: React.FC = () => {
   const [sideProduct, setSideProduct] = useState('');
   const [sideDraftLoading, setSideDraftLoading] = useState(false);
   const [activePanel, setActivePanel] = useState<Panel>(null);
+  const [recipientsFilter, setRecipientsFilter] = useState<string>('all');
   const [toast, setToast]             = useState<string|null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [submitting, setSubmitting]     = useState(false);
@@ -673,6 +674,27 @@ const CampaignsPage: React.FC = () => {
   const filteredCampaignIds = new Set(filteredCampaigns.map(c => c.id));
   const filteredRecipients = state.recipients.filter(r => r.campaign_id && filteredCampaignIds.has(r.campaign_id));
   const selectedCampaignRecipients = selectedId ? state.recipients.filter(r => r.campaign_id === selectedId) : [];
+  const todayStr = new Date().toDateString();
+  const firstContactToday = selectedCampaignRecipients.filter(r => {
+    if (r.status === 'pending' && r.send_at) {
+      return new Date(r.send_at).toDateString() === todayStr;
+    }
+    if (r.status === 'sent' && r.last_sent_at && (!r.follow_up_count || r.follow_up_count === 0)) {
+      return new Date(r.last_sent_at).toDateString() === todayStr;
+    }
+    return false;
+  }).length;
+
+  const followUpsToday = selectedCampaignRecipients.filter(r => {
+    if (r.status === 'sent' && r.next_follow_up_at) {
+      return new Date(r.next_follow_up_at).toDateString() === todayStr;
+    }
+    if (r.last_sent_at && r.follow_up_count && r.follow_up_count > 0) {
+      return new Date(r.last_sent_at).toDateString() === todayStr;
+    }
+    return false;
+  }).length;
+
   const filteredEmailConfigs = state.emailConfigs.filter(cfg => !selectedProjectId || cfg.project_id === selectedProjectId);
 
   const PANELS = [
@@ -887,37 +909,84 @@ const CampaignsPage: React.FC = () => {
 
                       {/* Status pills grid */}
                       <div className="grid grid-cols-2 gap-2 text-xs mb-4">
-                        <div className="flex items-center justify-between p-1.5 bg-[#FAF7EA] rounded-lg">
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedId(c.id);
+                            setRecipientsFilter('hot');
+                            setActivePanel('drafts');
+                          }}
+                          className="flex items-center justify-between p-1.5 bg-[#FAF7EA] rounded-lg hover:bg-[#F3ECD4] transition-colors cursor-pointer"
+                        >
                           <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Hot
                           </span>
                           <span className="font-bold text-slate-700">{hot}</span>
                         </div>
-                        <div className="flex items-center justify-between p-1.5 bg-[#EAF5EC] rounded-lg">
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedId(c.id);
+                            // Meetings doesn't map directly to a recipient state, just select campaign
+                          }}
+                          className="flex items-center justify-between p-1.5 bg-[#EAF5EC] rounded-lg hover:bg-[#D5EAD9] transition-colors cursor-pointer"
+                        >
                           <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Meetings
                           </span>
                           <span className="font-bold text-slate-700">{meetingsCount}</span>
                         </div>
-                        <div className="flex items-center justify-between p-1.5 bg-[#EAF2F8] rounded-lg">
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedId(c.id);
+                            setRecipientsFilter('cold');
+                            setActivePanel('drafts');
+                          }}
+                          className="flex items-center justify-between p-1.5 bg-[#EAF2F8] rounded-lg hover:bg-[#D3E5F3] transition-colors cursor-pointer"
+                        >
                           <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-400" /> Cold
                           </span>
                           <span className="font-bold text-slate-700">{cold}</span>
                         </div>
-                        <div className="flex items-center justify-between p-1.5 bg-[#FCE8E6] rounded-lg">
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedId(c.id);
+                            setRecipientsFilter('negative');
+                            setActivePanel('drafts');
+                          }}
+                          className="flex items-center justify-between p-1.5 bg-[#FCE8E6] rounded-lg hover:bg-[#F9D4D0] transition-colors cursor-pointer"
+                        >
                           <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
                             <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" /> Negative
                           </span>
                           <span className="font-bold text-slate-700">{negative}</span>
                         </div>
-                        <div className="flex items-center justify-between p-1.5 bg-[#e2f0ed] rounded-lg">
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedId(c.id);
+                            setRecipientsFilter('lead');
+                            setActivePanel('drafts');
+                          }}
+                          className="flex items-center justify-between p-1.5 bg-[#e2f0ed] rounded-lg hover:bg-[#C9E5E0] transition-colors cursor-pointer"
+                        >
                           <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
                             <span className="w-1.5 h-1.5 rounded-full bg-teal-400" /> Leads
                           </span>
                           <span className="font-bold text-slate-700">{leads}</span>
                         </div>
-                        <div className="flex items-center justify-between p-1.5 bg-[#f1f5f9] rounded-lg">
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedId(c.id);
+                            setRecipientsFilter('bounced');
+                            setActivePanel('drafts');
+                          }}
+                          className="flex items-center justify-between p-1.5 bg-[#f1f5f9] rounded-lg hover:bg-[#E2E8F0] transition-colors cursor-pointer"
+                        >
                           <span className="flex items-center gap-1 text-[10px] font-medium text-slate-600">
                             <span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> Bounced
                           </span>
@@ -1178,21 +1247,41 @@ const CampaignsPage: React.FC = () => {
                 <span className="text-sm font-bold text-emerald-600 block mt-1">0 <span className="text-[9px] text-slate-400 font-normal">Prospects</span></span>
               </div>
 
-              <div className="p-3 bg-[#EAF2F8] border border-blue-200 rounded-xl">
-                <span className="text-[10px] text-[#2C5F78] block uppercase font-medium">Today's Scheduled</span>
+              <div
+                className="p-3 bg-[#EAF2F8] border border-blue-200 rounded-xl cursor-pointer hover:bg-[#D5E6F2] transition-colors"
+                onClick={() => {
+                  setRecipientsFilter('all');
+                  setActivePanel('drafts');
+                }}
+              >
+                <span className="text-[10px] text-[#2C5F78] block uppercase font-medium font-bold">Today's Scheduled</span>
                 <span className="text-xs font-bold text-[#2C5F78] block mt-1">Activity</span>
               </div>
 
-              <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl">
-                <span className="text-[10px] text-slate-400 block uppercase font-medium">First contact emails</span>
+              <div
+                className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors"
+                onClick={() => {
+                  setRecipientsFilter('all'); // Show all prospects scheduled/sent
+                  setActivePanel('drafts');
+                }}
+              >
+                <span className="text-[10px] text-slate-400 block uppercase font-medium font-bold">First contact emails</span>
                 <span className="text-sm font-bold text-emerald-600 block mt-1">
-                  {selectedCampaignRecipients.filter(r => r.status === 'sent').length}
+                  {firstContactToday}
                 </span>
               </div>
 
-              <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl">
-                <span className="text-[10px] text-slate-400 block uppercase font-medium">Follow up emails</span>
-                <span className="text-sm font-bold text-emerald-600 block mt-1">0</span>
+              <div
+                className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors"
+                onClick={() => {
+                  setRecipientsFilter('all'); // Show all prospects scheduled/sent
+                  setActivePanel('drafts');
+                }}
+              >
+                <span className="text-[10px] text-slate-400 block uppercase font-medium font-bold">Follow up emails</span>
+                <span className="text-sm font-bold text-emerald-600 block mt-1">
+                  {followUpsToday}
+                </span>
               </div>
 
             </div>
@@ -1209,7 +1298,18 @@ const CampaignsPage: React.FC = () => {
                 {PANELS.map(p => (
                   <button
                     key={p.key}
-                    onClick={() => setActivePanel(activePanel === p.key ? null : p.key)}
+                    onClick={() => {
+                      if (activePanel === p.key) {
+                        setActivePanel(null);
+                      } else {
+                        setActivePanel(p.key);
+                        if (p.key === 'drafts') {
+                          setRecipientsFilter('pending');
+                        } else if (p.key === 'sent') {
+                          setRecipientsFilter('sent');
+                        }
+                      }
+                    }}
                     className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs font-bold ${
                       activePanel === p.key
                         ? 'bg-[#E5DEC7] border-[#D0C7AA] text-slate-800'
@@ -1232,8 +1332,8 @@ const CampaignsPage: React.FC = () => {
                       onUploadSuccess={() => showToast('🎉 Contacts list imported & validated!')}
                     />
                   )}
-                  {activePanel === 'drafts' && <RecipientsPanel campaignId={selectedId} status="pending"/>}
-                  {activePanel === 'sent' && <RecipientsPanel campaignId={selectedId} status="sent"/>}
+                  {activePanel === 'drafts' && <RecipientsPanel campaignId={selectedId} status={recipientsFilter}/>}
+                  {activePanel === 'sent' && <RecipientsPanel campaignId={selectedId} status={recipientsFilter}/>}
                   {activePanel === 'analytics' && selected && <AnalyticsPanel campaign={selected}/>}
                   {activePanel === 'email-config' && selected && (
                     <EmailConfigPanel
