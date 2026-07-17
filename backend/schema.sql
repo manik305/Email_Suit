@@ -125,6 +125,7 @@ CREATE TABLE IF NOT EXISTS public.recipients (
     send_at TIMESTAMP WITH TIME ZONE,
     last_sent_at TIMESTAMP WITH TIME ZONE,
     response_text TEXT,
+    last_message_id VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

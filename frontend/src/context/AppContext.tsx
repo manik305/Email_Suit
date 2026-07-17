@@ -31,6 +31,7 @@ export interface Recipient {
   campaign_id?: string;
   response_category?: string;
   response_text?: string;
+  last_message_id?: string;
   send_at?: string;
   last_sent_at?: string;
   next_follow_up_at?: string;

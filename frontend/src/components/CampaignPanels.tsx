@@ -468,7 +468,17 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
   }, [status]);
   
   // States for Draft Preview Modal
-  const [previewMsg, setPreviewMsg] = useState<{ subject: string; body: string } | null>(null);
+  const [previewMsg, setPreviewMsg] = useState<{
+    subject: string;
+    body: string;
+    mail_type?: string;
+    thread_history?: Array<{
+      mail_type: string;
+      subject: string;
+      body: string;
+      sent_at?: string;
+    }>;
+  } | null>(null);
   const [selectedRecipient, setSelectedRecipient] = useState<Recipient | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
 
@@ -669,9 +679,14 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
 
 
               <td className="px-6 py-3">
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${r.status === 'sent' ? 'bg-emerald-500/10 text-emerald-400 font-extrabold' : 'bg-amber-500/10 text-amber-400 font-extrabold'}`}>
-                  {r.status}
-                </span>
+                <div className="flex flex-col gap-1 items-start">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${r.status === 'sent' ? 'bg-emerald-500/10 text-emerald-400 font-extrabold' : 'bg-amber-500/10 text-amber-400 font-extrabold'}`}>
+                    {r.status}
+                  </span>
+                  <span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold uppercase ${(!r.last_sent_at) ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                    {(!r.last_sent_at) ? 'Initial Mail' : `Follow-up ${(r.follow_up_count || 0) + 1}`}
+                  </span>
+                </div>
               </td>
               <td className="px-6 py-3">
                 {editingId === r.id ? (
@@ -721,7 +736,14 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
           <div className="bg-[#1E293B] border border-slate-700/80 w-full max-w-xl rounded-3xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-slate-100 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex justify-between items-center pb-3 border-b border-slate-700/60">
-              <h3 className="font-bold text-sm text-indigo-400 uppercase tracking-wider">📧 Email Draft Preview</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm text-indigo-400 uppercase tracking-wider">📧 Email Draft Preview</h3>
+                {previewMsg.mail_type && (
+                  <span className="text-[9px] font-extrabold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                    {previewMsg.mail_type}
+                  </span>
+                )}
+              </div>
               <button 
                 onClick={() => {
                   setPreviewMsg(null);
@@ -745,6 +767,42 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
                   {previewMsg.body}
                 </div>
               </div>
+
+              {/* Thread History (Already Sent Emails in this Thread) */}
+              {previewMsg.thread_history && previewMsg.thread_history.length > 0 && (
+                <div className="space-y-3 pt-3 border-t border-slate-700/60">
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-bold">Conversation Thread (Sent Emails)</span>
+                  <div className="space-y-2.5 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+                    {previewMsg.thread_history.map((th, index) => (
+                      <div key={index} className="p-3 bg-slate-900/40 border border-slate-800/60 rounded-xl space-y-1.5">
+                        <div className="flex justify-between items-center pb-1 border-b border-slate-800/40">
+                          <span className="text-[9px] font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded uppercase">{th.mail_type}</span>
+                          {th.sent_at && (
+                            <span className="text-[8px] text-slate-400 font-mono">
+                              Sent: {new Date(th.sent_at).toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-slate-500 block font-semibold">Subject</span>
+                          <p className="text-[11px] font-semibold text-slate-300">{th.subject}</p>
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-slate-500 block font-semibold">Content</span>
+                          <div className="text-[11px] text-slate-400 font-mono leading-relaxed whitespace-pre-wrap mt-0.5 bg-slate-900/20 p-2 rounded border border-slate-800/20 max-h-[80px] overflow-y-auto custom-scrollbar">
+                            {th.body}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Recipient Variables Metadata Grid */}
               {selectedRecipient && (

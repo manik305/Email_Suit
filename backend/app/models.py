@@ -40,6 +40,7 @@ class Recipient(PostgresModel):
     last_sent_at: Optional[datetime] = None
     response_category: Optional[str] = None  # 'lead' | 'hot' | 'cold' | 'negative' | 'bounce'
     response_text: Optional[str] = None
+    last_message_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Backwards compatibility properties for designation/pin_code/linkedin_id

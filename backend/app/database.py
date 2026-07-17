@@ -105,6 +105,7 @@ async def init_db() -> None:
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS send_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS last_sent_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS response_text TEXT;
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS last_message_id VARCHAR(255);
                     ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS sender_email VARCHAR(255);
                     CREATE TABLE IF NOT EXISTS public.recipient_events (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

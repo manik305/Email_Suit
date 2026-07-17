@@ -69,6 +69,8 @@ def _build_mime_message(
     body: str,
     html_body: Optional[str],
     recipient_id: Optional[str],
+    in_reply_to: Optional[str] = None,
+    references: Optional[str] = None,
 ) -> MIMEMultipart:
     """
     Build a MIME email message with tracking pixel and rewritten links injected.
@@ -91,6 +93,11 @@ def _build_mime_message(
             html_body = html_body + tracking_pixel
 
     msg = MIMEMultipart("alternative")
+    
+    # Prefix subject with Re: if replying and not already prefixed
+    if in_reply_to and not (subject.lower().startswith("re:") or subject.lower().startswith("re :")):
+        subject = f"Re: {subject}"
+
     msg["Subject"] = subject
     msg["From"] = (
         f"{config.sender_name} <{config.sender_address}>"
@@ -98,6 +105,15 @@ def _build_mime_message(
         else config.sender_address
     )
     msg["To"] = to_address
+    
+    from email.utils import make_msgid
+    msg["Message-ID"] = make_msgid()
+    
+    if in_reply_to:
+        msg["In-Reply-To"] = in_reply_to
+    if references:
+        msg["References"] = references
+
     msg.attach(MIMEText(body, "plain"))
     if html_body:
         msg.attach(MIMEText(html_body, "html"))
@@ -219,14 +235,17 @@ class SmtpSession:
         body: str,
         html_body: Optional[str] = None,
         recipient_id: Optional[str] = None,
-    ) -> None:
+        in_reply_to: Optional[str] = None,
+        references: Optional[str] = None,
+    ) -> str:
         """
         Send one email over the persistent connection.
         Blocking — must be called inside asyncio.to_thread().
+        Returns the generated Message-ID.
         """
         self._ensure_connected()
         msg = _build_mime_message(
-            self._config, to_address, subject, body, html_body, recipient_id
+            self._config, to_address, subject, body, html_body, recipient_id, in_reply_to, references
         )
         assert self._server is not None
         self._server.sendmail(
@@ -240,6 +259,7 @@ class SmtpSession:
             self._send_count,
             self._batch_size,
         )
+        return msg["Message-ID"]
 
     def close(self) -> None:
         """Explicitly close and clean up the SMTP connection."""

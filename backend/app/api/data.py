@@ -518,78 +518,86 @@ async def get_recipient_draft_preview(recipient_id: str):
     recipient_name = recipient.name or (f"{recipient.first_name} {recipient.last_name}" if recipient.first_name or recipient.last_name else "there")
     
     is_follow_up = (recipient.status == "sent")
-    
+    thread_history = []
+
+    def format_template(tpl: str) -> str:
+        if not tpl:
+            return ""
+        return (
+            tpl
+            .replace("{{name}}", recipient_name).replace("{name}", recipient_name)
+            .replace("{{first_name}}", recipient.first_name or "").replace("{first_name}", recipient.first_name or "")
+            .replace("{{last_name}}", recipient.last_name or "").replace("{last_name}", recipient.last_name or "")
+            .replace("{{email}}", recipient.email).replace("{email}", recipient.email)
+            .replace("{{designation}}", recipient.title or "").replace("{designation}", recipient.title or "")
+            .replace("{{department}}", recipient.department or "").replace("{department}", recipient.department or "")
+            .replace("{{industry}}", recipient.industry or "").replace("{industry}", recipient.industry or "")
+            .replace("{{region}}", recipient.region or "").replace("{region}", recipient.region or "")
+            .replace("{{company_name}}", recipient.company_name or "").replace("{company_name}", recipient.company_name or "")
+            .replace("{{company}}", recipient.company_name or "").replace("{company}", recipient.company_name or "")
+        )
+
     if not is_follow_up:
-        subject = (
-            subject_tpl
-            .replace("{{name}}", recipient_name).replace("{name}", recipient_name)
-            .replace("{{first_name}}", recipient.first_name or "").replace("{first_name}", recipient.first_name or "")
-            .replace("{{last_name}}", recipient.last_name or "").replace("{last_name}", recipient.last_name or "")
-            .replace("{{email}}", recipient.email).replace("{email}", recipient.email)
-            .replace("{{designation}}", recipient.title or "").replace("{designation}", recipient.title or "")
-            .replace("{{department}}", recipient.department or "").replace("{department}", recipient.department or "")
-            .replace("{{industry}}", recipient.industry or "").replace("{industry}", recipient.industry or "")
-            .replace("{{region}}", recipient.region or "").replace("{region}", recipient.region or "")
-            .replace("{{company_name}}", recipient.company_name or "").replace("{company_name}", recipient.company_name or "")
-            .replace("{{company}}", recipient.company_name or "").replace("{company}", recipient.company_name or "")
-        )
-        body = (
-            body_tpl
-            .replace("{{name}}", recipient_name).replace("{name}", recipient_name)
-            .replace("{{first_name}}", recipient.first_name or "").replace("{first_name}", recipient.first_name or "")
-            .replace("{{last_name}}", recipient.last_name or "").replace("{last_name}", recipient.last_name or "")
-            .replace("{{email}}", recipient.email).replace("{email}", recipient.email)
-            .replace("{{designation}}", recipient.title or "").replace("{designation}", recipient.title or "")
-            .replace("{{department}}", recipient.department or "").replace("{department}", recipient.department or "")
-            .replace("{{industry}}", recipient.industry or "").replace("{industry}", recipient.industry or "")
-            .replace("{{region}}", recipient.region or "").replace("{region}", recipient.region or "")
-            .replace("{{company_name}}", recipient.company_name or "").replace("{company_name}", recipient.company_name or "")
-            .replace("{{company}}", recipient.company_name or "").replace("{company}", recipient.company_name or "")
-        )
+        mail_type = "Initial Mail"
+        subject = format_template(subject_tpl)
+        body = format_template(body_tpl)
     else:
         next_count = recipient.follow_up_count + 1
+        mail_type = f"Follow-up {next_count}"
+        
         subject_raw = f"Re: {subject_tpl}"
-        subject = (
-            subject_raw
-            .replace("{{name}}", recipient_name).replace("{name}", recipient_name)
-            .replace("{{first_name}}", recipient.first_name or "").replace("{first_name}", recipient.first_name or "")
-            .replace("{{last_name}}", recipient.last_name or "").replace("{last_name}", recipient.last_name or "")
-            .replace("{{email}}", recipient.email).replace("{email}", recipient.email)
-            .replace("{{designation}}", recipient.title or "").replace("{designation}", recipient.title or "")
-            .replace("{{department}}", recipient.department or "").replace("{department}", recipient.department or "")
-            .replace("{{industry}}", recipient.industry or "").replace("{industry}", recipient.industry or "")
-            .replace("{{region}}", recipient.region or "").replace("{region}", recipient.region or "")
-            .replace("{{company_name}}", recipient.company_name or "").replace("{company_name}", recipient.company_name or "")
-            .replace("{{company}}", recipient.company_name or "").replace("{company}", recipient.company_name or "")
-        )
-        body = None
+        subject = format_template(subject_raw)
+        
+        body_raw = None
         if campaign.follow_up_templates and len(campaign.follow_up_templates) > next_count:
-            body = campaign.follow_up_templates[next_count]
-        if not body:
-            body = (
+            body_raw = campaign.follow_up_templates[next_count]
+        if not body_raw:
+            body_raw = (
                 f"Hi {recipient_name},\n\n"
                 f"Just following up on my previous message regarding {campaign.name}. "
                 f"I wanted to quickly check back and see if you had any thoughts or questions!\n\n"
                 f"Best regards,\n"
                 f"{sender_name}"
             )
-        else:
-            body = (
-                body
-                .replace("{{name}}", recipient_name).replace("{name}", recipient_name)
-                .replace("{{first_name}}", recipient.first_name or "").replace("{first_name}", recipient.first_name or "")
-                .replace("{{last_name}}", recipient.last_name or "").replace("{last_name}", recipient.last_name or "")
-                .replace("{{email}}", recipient.email).replace("{email}", recipient.email)
-                .replace("{{designation}}", recipient.title or "").replace("{designation}", recipient.title or "")
-                .replace("{{department}}", recipient.department or "").replace("{department}", recipient.department or "")
-                .replace("{{industry}}", recipient.industry or "").replace("{industry}", recipient.industry or "")
-                .replace("{{region}}", recipient.region or "").replace("{region}", recipient.region or "")
-                .replace("{{company_name}}", recipient.company_name or "").replace("{company_name}", recipient.company_name or "")
-                .replace("{{company}}", recipient.company_name or "").replace("{company}", recipient.company_name or "")
-            )
+        body = format_template(body_raw)
+
+        # 1. Initial Mail was sent at recipient.send_at
+        init_subject = format_template(subject_tpl)
+        init_body = format_template(body_tpl)
+        thread_history.append({
+            "mail_type": "Initial Mail",
+            "subject": init_subject,
+            "body": init_body,
+            "sent_at": recipient.send_at.isoformat() if recipient.send_at else None
+        })
+        
+        # 2. Add sent follow-ups
+        for i in range(1, recipient.follow_up_count + 1):
+            fu_subject = f"Re: {init_subject}" if not init_subject.lower().startswith("re:") else init_subject
+            fu_body_raw = None
+            if campaign.follow_up_templates and len(campaign.follow_up_templates) > i:
+                fu_body_raw = campaign.follow_up_templates[i]
+            if not fu_body_raw:
+                fu_body_raw = (
+                    f"Hi {recipient_name},\n\n"
+                    f"Just following up on my previous message regarding {campaign.name}. "
+                    f"I wanted to quickly check back and see if you had any thoughts or questions!\n\n"
+                    f"Best regards,\n"
+                    f"{sender_name}"
+                )
+            fu_body = format_template(fu_body_raw)
+            sent_time = recipient.last_sent_at if i == recipient.follow_up_count else recipient.send_at
+            thread_history.append({
+                "mail_type": f"Follow-up {i}",
+                "subject": fu_subject,
+                "body": fu_body,
+                "sent_at": sent_time.isoformat() if sent_time else None
+            })
 
     return {
         "recipient_id": recipient_id,
         "subject": subject,
-        "body": body
+        "body": body,
+        "mail_type": mail_type,
+        "thread_history": thread_history
     }

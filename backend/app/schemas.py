@@ -92,6 +92,7 @@ class RecipientBase(BaseModel):
     status: str = "pending"
     response_category: Optional[str] = None  # 'lead' | 'hot' | 'cold' | 'negative' | 'bounce'
     response_text: Optional[str] = None
+    last_message_id: Optional[str] = None
 
 
 class RecipientCreate(RecipientBase):
@@ -108,6 +109,7 @@ class Recipient(RecipientBase):
     send_at: Optional[datetime] = None
     last_sent_at: Optional[datetime] = None
     response_text: Optional[str] = None
+    last_message_id: Optional[str] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
@@ -230,6 +232,8 @@ class RecipientPreviewResponse(BaseModel):
     recipient_id: str
     subject: str
     body: str
+    mail_type: str
+    thread_history: List[dict] = []
 
 
 # ─── Project Schemas ──────────────────────────────────────────────────────────

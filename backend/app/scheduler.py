@@ -864,13 +864,21 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
 
                 try:
                     target_email = r.email.strip(" \t\n\r,;\"'")
-                    await asyncio.to_thread(
+                    in_reply_to_header = None
+                    references_header = None
+                    if is_follow_up and r.last_message_id:
+                        in_reply_to_header = r.last_message_id
+                        references_header = r.last_message_id
+
+                    msg_id = await asyncio.to_thread(
                         session.send_message,
-                        target_email,
+                        r.email.strip(" \t\n\r,;\"'"),
                         subject,
                         plain_body,
                         html_body,
                         str(r.id),   # recipient_id for tracking pixel
+                        in_reply_to_header,
+                        references_header,
                     )
 
                     # Increment the daily quota counter for the account that just sent
@@ -888,7 +896,8 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                                 "follow_up_count": 0,
                                 "next_follow_up_at": next_time,
                                 "send_at": datetime.now(timezone.utc),
-                                "last_sent_at": datetime.now(timezone.utc)
+                                "last_sent_at": datetime.now(timezone.utc),
+                                "last_message_id": msg_id
                             }
                         })
 
@@ -898,7 +907,8 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                                 "$set": {
                                     "follow_up_count": next_count,
                                     "next_follow_up_at": None,
-                                    "last_sent_at": datetime.now(timezone.utc)
+                                    "last_sent_at": datetime.now(timezone.utc),
+                                    "last_message_id": msg_id
                                 }
                             })
                         else:
@@ -907,7 +917,8 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                                 "$set": {
                                     "follow_up_count": next_count,
                                     "next_follow_up_at": next_time,
-                                    "last_sent_at": datetime.now(timezone.utc)
+                                    "last_sent_at": datetime.now(timezone.utc),
+                                    "last_message_id": msg_id
                                 }
                             })
                     sent += 1
