@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS public.campaigns (
     target_region VARCHAR(100) DEFAULT 'US' NOT NULL,
     mails_per_minute INTEGER DEFAULT 2,
     daily_fresh_limit INTEGER DEFAULT 100,
+    daily_followup_limit INTEGER DEFAULT 200,
     max_contacts_per_company INTEGER DEFAULT 1,
     consecutive_failures INTEGER DEFAULT 0,
     diagnostic_error TEXT,

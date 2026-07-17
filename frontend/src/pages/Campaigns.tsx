@@ -123,7 +123,7 @@ const CampaignsPage: React.FC = () => {
     email_config_id:'',
     tone:'professional', product:'',
     localDt:'', timezone:'America/New_York', target_region: 'US',
-    mails_per_minute: 2, daily_fresh_limit: 100, max_contacts_per_company: 1,
+    mails_per_minute: 2, daily_fresh_limit: 100, daily_followup_limit: 200, max_contacts_per_company: 1,
   });
 
   const [modalStep, setModalStep] = useState(1);
@@ -215,7 +215,7 @@ const CampaignsPage: React.FC = () => {
       email_config_id:'',
       tone:'professional', product:'',
       localDt:'', timezone:'America/New_York', target_region: 'US',
-      mails_per_minute: 2, daily_fresh_limit: 100, max_contacts_per_company: 1,
+      mails_per_minute: 2, daily_fresh_limit: 100, daily_followup_limit: 200, max_contacts_per_company: 1,
     });
   };
 
@@ -246,6 +246,7 @@ const CampaignsPage: React.FC = () => {
       target_region: (selected.target_region as any) || 'US',
       mails_per_minute: selected.mails_per_minute || 2,
       daily_fresh_limit: selected.daily_fresh_limit || 100,
+      daily_followup_limit: selected.daily_followup_limit || 200,
       max_contacts_per_company: selected.max_contacts_per_company || 1,
     });
     
@@ -409,6 +410,7 @@ const CampaignsPage: React.FC = () => {
             timezone: form.timezone,
             mails_per_minute: form.mails_per_minute,
             daily_fresh_limit: form.daily_fresh_limit,
+            daily_followup_limit: form.daily_followup_limit,
             max_contacts_per_company: form.max_contacts_per_company,
             project_id: selectedProjectId || undefined,
           }),
@@ -432,7 +434,7 @@ const CampaignsPage: React.FC = () => {
             name:'',target_segment:'All Leads',schedule:'Once',subject:'',body_template:'',send_at:'',email_config_id:'',
             campaign_type: 'cold',
             tone:'professional',product:'',localDt:'',timezone:'America/New_York',target_region:'US',
-            mails_per_minute: 2, daily_fresh_limit: 100, max_contacts_per_company: 1,
+            mails_per_minute: 2, daily_fresh_limit: 100, daily_followup_limit: 200, max_contacts_per_company: 1,
           });
           await refreshData();
         } else {
@@ -456,6 +458,7 @@ const CampaignsPage: React.FC = () => {
       timezone: form.timezone,
       mails_per_minute: form.mails_per_minute,
       daily_fresh_limit: form.daily_fresh_limit,
+      daily_followup_limit: form.daily_followup_limit,
       max_contacts_per_company: form.max_contacts_per_company,
       project_id: selectedProjectId || undefined,
     } as any);
@@ -474,7 +477,7 @@ const CampaignsPage: React.FC = () => {
         name:'',target_segment:'All Leads',schedule:'Once',subject:'',body_template:'',send_at:'',email_config_id:'',
         campaign_type: 'cold',
         tone:'professional',product:'',localDt:'',timezone:'America/New_York',target_region:'US',
-        mails_per_minute: 2, daily_fresh_limit: 100, max_contacts_per_company: 1,
+        mails_per_minute: 2, daily_fresh_limit: 100, daily_followup_limit: 200, max_contacts_per_company: 1,
       });
     } else { showToast('❌ Failed to create campaign.'); }
   };
@@ -488,6 +491,7 @@ const CampaignsPage: React.FC = () => {
   const [sideLocalDt, setSideLocalDt] = useState('');
   const [sideMailsPerMinute, setSideMailsPerMinute] = useState(2);
   const [sideDailyFreshLimit, setSideDailyFreshLimit] = useState(100);
+  const [sideDailyFollowupLimit, setSideDailyFollowupLimit] = useState(200);
   const [sideMaxContactsPerCompany, setSideMaxContactsPerCompany] = useState(1);
   const [updatingSchedule, setUpdatingSchedule] = useState(false);
   const [sendingNow, setSendingNow] = useState(false);
@@ -509,6 +513,7 @@ const CampaignsPage: React.FC = () => {
       }
       setSideMailsPerMinute(selected.mails_per_minute ?? 2);
       setSideDailyFreshLimit(selected.daily_fresh_limit ?? 100);
+      setSideDailyFollowupLimit(selected.daily_followup_limit ?? 200);
       setSideMaxContactsPerCompany(selected.max_contacts_per_company ?? 1);
     }
   }, [selectedId, selected?.send_at, selected?.timezone]);
@@ -593,6 +598,7 @@ const CampaignsPage: React.FC = () => {
           send_at: send_at,
           mails_per_minute: sideMailsPerMinute,
           daily_fresh_limit: sideDailyFreshLimit,
+          daily_followup_limit: sideDailyFollowupLimit,
           max_contacts_per_company: sideMaxContactsPerCompany,
         }),
       });
@@ -1332,6 +1338,19 @@ const CampaignsPage: React.FC = () => {
                         </select>
                       </div>
                       <div className="bg-white p-2 rounded-lg border border-slate-150">
+                        <label htmlFor="side-followup" className="text-[9px] text-slate-400 block font-bold uppercase">Daily Follow-up</label>
+                        <select
+                          id="side-followup"
+                          value={sideDailyFollowupLimit}
+                          onChange={e => setSideDailyFollowupLimit(parseInt(e.target.value))}
+                          className="w-full bg-transparent text-slate-700 font-bold focus:outline-none"
+                        >
+                          {[50, 100, 200, 300, 400, 500, 1000, 1500].map(v => (
+                            <option key={v} value={v}>{v} limit</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-150">
                         <label htmlFor="side-maxco" className="text-[9px] text-slate-400 block font-bold uppercase">Max per Co.</label>
                         <select
                           id="side-maxco"
@@ -1540,6 +1559,32 @@ const CampaignsPage: React.FC = () => {
                         onClick={() => set('daily_fresh_limit', val)}
                         className={`py-1.5 rounded-lg font-bold border transition text-[10px] ${
                           form.daily_fresh_limit === val
+                            ? 'bg-[#E6EFF6] text-[#2C5F78] border-[#51A2C3] shadow-sm'
+                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        {val}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Daily Follow-up Volume (Pool Limit) */}
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="block font-bold text-slate-600 uppercase">Daily Follow-up Volume (Pool Limit)</label>
+                    <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md font-bold text-[10px]">
+                      {form.daily_followup_limit ?? 200} Follow-ups / Day
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-8 gap-2">
+                    {[50, 100, 200, 300, 400, 500, 1000, 1500].map(val => (
+                      <button
+                        type="button"
+                        key={val}
+                        onClick={() => set('daily_followup_limit', val)}
+                        className={`py-1.5 rounded-lg font-bold border transition text-[10px] ${
+                          form.daily_followup_limit === val
                             ? 'bg-[#E6EFF6] text-[#2C5F78] border-[#51A2C3] shadow-sm'
                             : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
                         }`}
@@ -1962,7 +2007,7 @@ const CampaignsPage: React.FC = () => {
                     </div>
                     <div>
                       <span className="text-[9px] text-slate-400 block uppercase font-bold">Daily Volume Limit</span>
-                      <span className="font-bold text-slate-700 block">{form.daily_fresh_limit} fresh leads</span>
+                      <span className="font-bold text-slate-700 block">{form.daily_fresh_limit} fresh · {form.daily_followup_limit} follow-ups</span>
                     </div>
                     <div>
                       <span className="text-[9px] text-slate-400 block uppercase font-bold">Company Limit</span>

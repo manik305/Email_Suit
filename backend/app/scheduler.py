@@ -574,7 +574,7 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                     due_follow_ups.append(r)
 
         # Group overdue follow-ups by YYYY-MM-DD of original send_at date in campaign timezone
-        # and only process the oldest batch's follow-ups.
+        # and process them up to the daily_followup_limit (oldest batches first).
         if due_follow_ups:
             def get_send_date_str(rec):
                 if not rec.send_at:
@@ -597,12 +597,23 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                 due_by_date[get_send_date_str(r)].append(r)
 
             sorted_dates = sorted([d for d in due_by_date.keys() if d != "unknown"])
-            if sorted_dates:
-                oldest_date = sorted_dates[0]
-                due_follow_ups = due_by_date[oldest_date]
-                logger.info("Campaign %s: Grouping follow-ups by fresh send date. Processing oldest batch from %s only (%d contacts).", campaign.id, oldest_date, len(due_follow_ups))
-            elif "unknown" in due_by_date:
-                due_follow_ups = due_by_date["unknown"]
+            selected_follow_ups = []
+            followup_limit = campaign.daily_followup_limit or 200
+
+            for d in sorted_dates:
+                batch = due_by_date[d]
+                remaining_slots = followup_limit - len(selected_follow_ups)
+                if remaining_slots <= 0:
+                    break
+                selected_follow_ups.extend(batch[:remaining_slots])
+
+            if len(selected_follow_ups) < followup_limit and "unknown" in due_by_date:
+                batch = due_by_date["unknown"]
+                remaining_slots = followup_limit - len(selected_follow_ups)
+                selected_follow_ups.extend(batch[:remaining_slots])
+
+            due_follow_ups = selected_follow_ups
+            logger.info("Campaign %s: Grouping follow-ups by fresh send date. Processed up to limit %d. Actual: %d", campaign.id, followup_limit, len(due_follow_ups))
 
         # Combine fresh contacts and follow-ups due
         combined_recipients = fresh_recipients + due_follow_ups
@@ -955,6 +966,7 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
 
             if updates:
                 await campaign.update({"$set": updates})
+                await update_recipient_send_times(campaign.id)
 
         return {"sent": sent, "failed": failed, "errors": errors, "status": campaign.status if campaign else "deleted"}
     finally:
@@ -1075,12 +1087,14 @@ async def update_recipient_send_times(campaign_id: str) -> None:
     batch_data = []
     for idx, r in enumerate(pending_recipients):
         day_offset = idx // daily_limit
-        # Add business days, skipping Saturday and Sunday
-        send_day = _add_business_days(base_time, day_offset)
-        # Calculate intra-day offset
-        intra_day_seconds = (idx % daily_limit) * gap_seconds
-        est_send_time = send_day + timedelta(seconds=intra_day_seconds)
-        batch_data.append((est_send_time, r.id))
+        if day_offset == 0:
+            # Calculate intra-day offset
+            intra_day_seconds = idx * gap_seconds
+            est_send_time = base_time + timedelta(seconds=intra_day_seconds)
+            batch_data.append((est_send_time, r.id))
+        else:
+            # Do not schedule future days; set send_at to None (NULL in DB)
+            batch_data.append((None, r.id))
 
 
     if batch_data:

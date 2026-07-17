@@ -54,6 +54,7 @@ export interface Campaign {
   target_region?: string;
   mails_per_minute?: number;
   daily_fresh_limit?: number;
+  daily_followup_limit?: number;
   max_contacts_per_company?: number;
   consecutive_failures?: number;
   diagnostic_error?: string;
@@ -132,6 +133,7 @@ export interface CreateCampaignPayload {
   timezone?: string;
   mails_per_minute?: number;
   daily_fresh_limit?: number;
+  daily_followup_limit?: number;
   max_contacts_per_company?: number;
 }
 

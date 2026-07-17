@@ -20,6 +20,8 @@ interface AnalyticsDetail {
   total_pending: number;
   total_bounced: number;
   total_responded: number;
+  total_followups_sent: number;
+  total_followups_pending: number;
   leads: number;
   hot: number;
   cold: number;
@@ -849,6 +851,27 @@ const AnalyticsPanel: React.FC<{ campaign: Campaign }> = ({ campaign }) => {
           </div>
         ))}
       </div>
+
+      {/* Follow-up Pool Stats */}
+      {detail && (
+        <div className="bg-slate-900/10 border border-slate-700/10 rounded-2xl p-4 space-y-2">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">🔄 Follow-up Pool Metrics</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white p-3 rounded-xl border border-slate-150">
+              <span className="text-[10px] text-slate-400 block font-bold uppercase">Total Follow-ups Sent</span>
+              <span className="text-2xl font-black text-slate-700">{detail.total_followups_sent}</span>
+            </div>
+            <div className="bg-white p-3 rounded-xl border border-slate-150">
+              <span className="text-[10px] text-slate-400 block font-bold uppercase">Pending in Queue</span>
+              <span className="text-2xl font-black text-slate-700">{detail.total_followups_pending}</span>
+            </div>
+            <div className="bg-white p-3 rounded-xl border border-slate-150">
+              <span className="text-[10px] text-slate-400 block font-bold uppercase">Daily Limit Constraint</span>
+              <span className="text-2xl font-black text-slate-700">{campaign.daily_followup_limit ?? 200} / day</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Response Classification Breakdown */}
       {detail && (

@@ -699,6 +699,9 @@ async def get_analytics_detail(
     bounce_classified = len([r for r in recipients if r.response_category == "bounce"])
     total_responded = leads + hot + cold + negative + bounce_classified
 
+    total_followups_sent = sum(r.follow_up_count for r in recipients)
+    total_followups_pending = len([r for r in recipients if r.status == "sent" and r.next_follow_up_at])
+
     delivery_rate = round((sent / total * 100), 1) if total > 0 else 0.0
     response_rate = round((total_responded / sent * 100), 1) if sent > 0 else 0.0
 
@@ -708,6 +711,8 @@ async def get_analytics_detail(
         total_pending=pending,
         total_bounced=bounced,
         total_responded=total_responded,
+        total_followups_sent=total_followups_sent,
+        total_followups_pending=total_followups_pending,
         leads=leads,
         hot=hot,
         cold=cold,

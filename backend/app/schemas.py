@@ -132,6 +132,7 @@ class CampaignBase(BaseModel):
     created_by: Optional[str] = None
     mails_per_minute: Optional[int] = 2
     daily_fresh_limit: Optional[int] = 100
+    daily_followup_limit: Optional[int] = 200
     max_contacts_per_company: Optional[int] = 1
     consecutive_failures: Optional[int] = 0
     diagnostic_error: Optional[str] = None
@@ -168,6 +169,7 @@ class CampaignUpdate(BaseModel):
     created_by: Optional[str] = None
     mails_per_minute: Optional[int] = None
     daily_fresh_limit: Optional[int] = None
+    daily_followup_limit: Optional[int] = None
     max_contacts_per_company: Optional[int] = None
     consecutive_failures: Optional[int] = None
     diagnostic_error: Optional[str] = None
@@ -307,6 +309,8 @@ class CampaignAnalyticsDetail(BaseModel):
     total_pending: int = 0
     total_bounced: int = 0
     total_responded: int = 0
+    total_followups_sent: int = 0
+    total_followups_pending: int = 0
     leads: int = 0
     hot: int = 0
     cold: int = 0

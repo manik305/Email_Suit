@@ -268,6 +268,7 @@ class Campaign(PostgresModel):
 
     mails_per_minute: int = 2
     daily_fresh_limit: int = 100
+    daily_followup_limit: int = 200
     max_contacts_per_company: int = 1
     consecutive_failures: int = 0
     diagnostic_error: Optional[str] = None
