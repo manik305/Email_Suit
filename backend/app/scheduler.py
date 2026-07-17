@@ -986,6 +986,11 @@ async def _run_scheduled_campaigns() -> None:
         logger.warning("Database query failed in scheduled campaigns check (possible network or DNS blip): %s", e)
         return
 
+    # Trigger background IMAP inbox checks for all active and paused campaigns to keep bounce tracking updated
+    for campaign in all_campaigns:
+        if campaign.status in ["active", "paused"] and (campaign.email_config_id or campaign.email_config_pool):
+            asyncio.create_task(check_imap_inbox_for_updates(campaign))
+
     candidates = [
         c for c in all_campaigns 
         if c.status in ["draft", "active"] and c.email_config_id
