@@ -612,6 +612,11 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
                 {r.response_category && (
                   <CategoryBadge category={r.response_category} />
                 )}
+                {r.response_text && (
+                  <div className="mt-1.5 p-2 bg-slate-900/60 border border-slate-700/30 rounded-lg text-[10px] text-slate-400 italic max-w-xs whitespace-pre-wrap leading-relaxed">
+                    💬 "{r.response_text}"
+                  </div>
+                )}
               </td>
               <td className="px-6 py-3">
                 {editingId === r.id ? (

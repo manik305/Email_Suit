@@ -91,6 +91,7 @@ class RecipientBase(BaseModel):
     region: Optional[str] = None
     status: str = "pending"
     response_category: Optional[str] = None  # 'lead' | 'hot' | 'cold' | 'negative' | 'bounce'
+    response_text: Optional[str] = None
 
 
 class RecipientCreate(RecipientBase):
@@ -106,6 +107,7 @@ class Recipient(RecipientBase):
     click_count: int = 0
     send_at: Optional[datetime] = None
     last_sent_at: Optional[datetime] = None
+    response_text: Optional[str] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 

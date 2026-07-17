@@ -76,6 +76,7 @@ async def sync_lead_response(
         return
     
     recipient.response_category = category
+    recipient.response_text = response_text
     if category in ("hot", "cold", "lead", "negative", "reference"):
         recipient.status = "replied"
         recipient.next_follow_up_at = None
