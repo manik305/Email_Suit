@@ -346,10 +346,55 @@ async def check_imap_inbox_for_updates(campaign) -> None:
                     or "postmaster" in msg.from_addr.lower()
                 )
                 if is_bounce:
-                    # Find recipient email in body/snippet/subject
-                    email_match = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', (msg.body or "") + " " + (msg.subject or "") + " " + (msg.snippet or ""))
+                    email_match = []
+                    body_text = msg.body or ""
+                    subject_text = msg.subject or ""
+                    snippet_text = msg.snippet or ""
+
+                    # 1. Look for Final-Recipient or Original-Recipient in the body
+                    final_recip_matches = re.findall(
+                        r'(?:Final-Recipient|Original-Recipient):\s*(?:rfc822;\s*)?([a-zA-Z0-9\.\-_]+@[a-zA-Z0-9\.\-_]+\.[a-zA-Z0-9\.\-_]+)',
+                        body_text,
+                        re.IGNORECASE
+                    )
+                    if final_recip_matches:
+                        email_match.extend(final_recip_matches)
+
+                    # 2. Look for To: header in the body (quotes the failed recipient)
+                    to_matches = re.findall(
+                        r'^\s*To:\s*(?:[^<>\n]*<)?([a-zA-Z0-9\.\-_]+@[a-zA-Z0-9\.\-_]+\.[a-zA-Z0-9\.\-_]+)>?',
+                        body_text,
+                        re.MULTILINE | re.IGNORECASE
+                    )
+                    if to_matches:
+                        email_match.extend(to_matches)
+
+                    # 3. Look in subject
+                    subject_emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', subject_text)
+                    if subject_emails:
+                        email_match.extend(subject_emails)
+
+                    # 4. If nothing found yet, fall back to snippet or first non-sender email in the body
+                    if not email_match:
+                        snippet_emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', snippet_text)
+                        if snippet_emails:
+                            email_match.extend(snippet_emails)
+
+                    if not email_match:
+                        all_body_emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', body_text)
+                        if all_body_emails:
+                            sender_addr = config.sender_address.lower().strip()
+                            filtered_emails = [e for e in all_body_emails if e.lower().strip() != sender_addr]
+                            if filtered_emails:
+                                email_match.append(filtered_emails[0])
+
+                    # Clean and deduplicate list
                     email_match = {e.lower().strip() for e in email_match}
                     
+                    # Filter out our own sender address and system addresses from final matches
+                    sender_addr = config.sender_address.lower().strip()
+                    email_match = {e for e in email_match if e != sender_addr and "mailer-daemon" not in e and "postmaster" not in e}
+
                     for email_found in email_match:
                         if "mailer-daemon" in email_found or "postmaster" in email_found:
                             continue
