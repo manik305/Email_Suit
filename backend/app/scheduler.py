@@ -17,6 +17,7 @@ import random
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional, Dict, Any
+import smtplib
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -982,16 +983,43 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                                 }
                             })
                     sent += 1
-                except Exception as exc:
-                    logger.error("Failed sending to %s: %s", r.email, exc)
-                    errors.append({"email": r.email, "error": str(exc)})
+                except smtplib.SMTPRecipientsRefused as exc:
+                    logger.error("Recipient %s refused (Bounce): %s", r.email, exc)
+                    errors.append({"email": r.email, "error": f"Recipient refused: {exc}"})
                     await r.update({
                         "$set": {
                             "status": "bounced",
+                            "response_category": "bounce",
                             "max_follow_ups": 0,
                             "next_follow_up_at": None
                         }
                     })
+                    failed += 1
+                except smtplib.SMTPResponseException as exc:
+                    if 500 <= exc.smtp_code <= 599 and exc.smtp_code not in (554, 535, 530):
+                        logger.error("SMTP permanent error sending to %s: %s", r.email, exc)
+                        errors.append({"email": r.email, "error": f"Permanent SMTP Error: {exc}"})
+                        await r.update({
+                            "$set": {
+                                "status": "bounced",
+                                "response_category": "bounce",
+                                "max_follow_ups": 0,
+                                "next_follow_up_at": None
+                            }
+                        })
+                    else:
+                        logger.error("Transient SMTP failure sending to %s: %s", r.email, exc)
+                        errors.append({"email": r.email, "error": str(exc)})
+                        retry_time = datetime.now(timezone.utc) + timedelta(hours=1)
+                        update_doc = {"next_follow_up_at": retry_time} if is_follow_up else {"send_at": retry_time}
+                        await r.update({"$set": update_doc})
+                    failed += 1
+                except Exception as exc:
+                    logger.error("Transient failure sending to %s: %s", r.email, exc)
+                    errors.append({"email": r.email, "error": str(exc)})
+                    retry_time = datetime.now(timezone.utc) + timedelta(hours=1)
+                    update_doc = {"next_follow_up_at": retry_time} if is_follow_up else {"send_at": retry_time}
+                    await r.update({"$set": update_doc})
                     failed += 1
 
                     # Spam Block protection
