@@ -675,25 +675,31 @@ const CampaignsPage: React.FC = () => {
   const filteredRecipients = state.recipients.filter(r => r.campaign_id && filteredCampaignIds.has(r.campaign_id));
   const selectedCampaignRecipients = selectedId ? state.recipients.filter(r => r.campaign_id === selectedId) : [];
   const todayStr = new Date().toDateString();
-  const firstContactToday = selectedCampaignRecipients.filter(r => {
+  const initialToday = selectedCampaignRecipients.filter(r => {
     if (r.status === 'pending' && r.send_at) {
       return new Date(r.send_at).toDateString() === todayStr;
     }
-    if (r.status === 'sent' && r.last_sent_at && (!r.follow_up_count || r.follow_up_count === 0)) {
+    if ((r.status === 'sent' || r.status === 'no_response' || r.status === 'replied') && r.last_sent_at && (!r.follow_up_count || r.follow_up_count === 0)) {
       return new Date(r.last_sent_at).toDateString() === todayStr;
     }
     return false;
   }).length;
 
-  const followUpsToday = selectedCampaignRecipients.filter(r => {
-    if (r.status === 'sent' && r.next_follow_up_at) {
-      return new Date(r.next_follow_up_at).toDateString() === todayStr;
+  const followUpBreakdown: Record<number, number> = {};
+  selectedCampaignRecipients.forEach(r => {
+    const isScheduledToday = r.status === 'sent' && r.next_follow_up_at && new Date(r.next_follow_up_at).toDateString() === todayStr;
+    const wasSentToday = r.last_sent_at && r.follow_up_count && r.follow_up_count > 0 && new Date(r.last_sent_at).toDateString() === todayStr;
+    
+    if (isScheduledToday || wasSentToday) {
+      // If scheduled today, it will be the next stage. If sent today, it's the current stage.
+      const stage = (isScheduledToday && r.follow_up_count !== undefined) ? r.follow_up_count + 1 : (r.follow_up_count || 1);
+      followUpBreakdown[stage] = (followUpBreakdown[stage] || 0) + 1;
     }
-    if (r.last_sent_at && r.follow_up_count && r.follow_up_count > 0) {
-      return new Date(r.last_sent_at).toDateString() === todayStr;
-    }
-    return false;
-  }).length;
+  });
+  
+  const followUpsToday = Object.values(followUpBreakdown).reduce((a, b) => a + b, 0);
+  const noResponseTotal = selectedCampaignRecipients.filter(r => r.status === 'no_response').length;
+  const noResponseToday = selectedCampaignRecipients.filter(r => r.status === 'no_response' && r.last_sent_at && new Date(r.last_sent_at).toDateString() === todayStr).length;
 
   const filteredEmailConfigs = state.emailConfigs.filter(cfg => !selectedProjectId || cfg.project_id === selectedProjectId);
 
@@ -821,9 +827,10 @@ const CampaignsPage: React.FC = () => {
                   const campaignRecipients = filteredRecipients.filter(r => r.campaign_id === c.id);
                   const companies = new Set(campaignRecipients.map(r => r.company_name).filter(Boolean)).size;
                   const contacts = campaignRecipients.length;
-                  const sent = campaignRecipients.filter(r => r.status === 'sent').length;
+                  const totalSent = campaignRecipients.filter(r => r.status !== 'pending' && r.status !== 'deferred').length;
                   const todayStr = new Date().toDateString();
-                  const sentToday = campaignRecipients.filter(r => r.last_sent_at && new Date(r.last_sent_at).toDateString() === todayStr).length;
+                  const fuToday = campaignRecipients.filter(r => r.last_sent_at && new Date(r.last_sent_at).toDateString() === todayStr && r.follow_up_count !== undefined && r.follow_up_count > 0).length;
+                  const noResponse = campaignRecipients.filter(r => r.status === 'no_response').length;
 
                   // Dynamic categories:
                   const hot = campaignRecipients.filter(r => r.response_category === 'hot').length;
@@ -888,22 +895,26 @@ const CampaignsPage: React.FC = () => {
                       </div>
 
                       {/* Stats counters */}
-                      <div className="grid grid-cols-4 gap-2 py-3 border-t border-b border-slate-150 mb-4 text-center">
+                      <div className="grid grid-cols-5 gap-1 py-3 border-t border-b border-slate-150 mb-4 text-center">
                         <div>
-                          <span className="text-[9px] text-slate-400 block uppercase font-medium">Companies</span>
+                          <span className="text-[9px] text-slate-400 block uppercase font-medium">Cos</span>
                           <span className="text-xs font-black text-slate-800">{companies}</span>
                         </div>
                         <div>
-                          <span className="text-[9px] text-slate-400 block uppercase font-medium">Contacts</span>
+                          <span className="text-[9px] text-slate-400 block uppercase font-medium">Ppl</span>
                           <span className="text-xs font-black text-slate-800">{contacts}</span>
                         </div>
                         <div>
-                          <span className="text-[9px] text-slate-400 block uppercase font-medium">Total Sent</span>
-                          <span className="text-xs font-black text-slate-800">{sent}</span>
+                          <span className="text-[9px] text-slate-400 block uppercase font-medium">Initial</span>
+                          <span className="text-xs font-black text-slate-800">{totalSent}</span>
                         </div>
                         <div>
-                          <span className="text-[9px] text-slate-400 block uppercase font-medium text-sky-500">Sent Today</span>
-                          <span className="text-xs font-black text-sky-600">{sentToday}</span>
+                          <span className="text-[9px] text-slate-400 block uppercase font-medium text-sky-500">FU Tdy</span>
+                          <span className="text-xs font-black text-sky-600">{fuToday}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 block uppercase font-medium text-slate-500">No Rsp</span>
+                          <span className="text-xs font-black text-slate-600">{noResponse}</span>
                         </div>
                       </div>
 
@@ -1221,69 +1232,91 @@ const CampaignsPage: React.FC = () => {
             </div>
 
             {/* KPI Matrix Row (Dynamic metrics calculated from database) */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 text-center">
-              
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 text-center mb-4">
               <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl">
-                <span className="text-[10px] text-slate-400 block uppercase font-medium">Campaign Activity</span>
-                <span className="text-xs font-bold text-slate-600 block mt-1">Till Date</span>
-              </div>
-
-              <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl">
-                <span className="text-[10px] text-slate-400 block uppercase font-medium">Number of companies</span>
+                <span className="text-[10px] text-slate-400 block uppercase font-medium">Companies</span>
                 <span className="text-sm font-bold text-emerald-600 block mt-1">
                   {new Set(selectedCampaignRecipients.map(r => r.company_name).filter(Boolean)).size}
                 </span>
               </div>
 
               <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl">
-                <span className="text-[10px] text-slate-400 block uppercase font-medium">Number of prospects</span>
+                <span className="text-[10px] text-slate-400 block uppercase font-medium">Prospects</span>
                 <span className="text-sm font-bold text-emerald-600 block mt-1">
                   {selectedCampaignRecipients.length}
                 </span>
               </div>
 
-              <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl">
-                <span className="text-[10px] text-slate-400 block uppercase font-medium">All follow ups done</span>
-                <span className="text-sm font-bold text-emerald-600 block mt-1">0 <span className="text-[9px] text-slate-400 font-normal">Prospects</span></span>
-              </div>
-
               <div
-                className="p-3 bg-[#EAF2F8] border border-blue-200 rounded-xl cursor-pointer hover:bg-[#D5E6F2] transition-colors"
+                className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors"
                 onClick={() => {
                   setRecipientsFilter('all');
                   setActivePanel('drafts');
                 }}
               >
-                <span className="text-[10px] text-[#2C5F78] block uppercase font-medium font-bold">Today's Scheduled</span>
-                <span className="text-xs font-bold text-[#2C5F78] block mt-1">Activity</span>
-              </div>
-
-              <div
-                className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors"
-                onClick={() => {
-                  setRecipientsFilter('all'); // Show all prospects scheduled/sent
-                  setActivePanel('drafts');
-                }}
-              >
-                <span className="text-[10px] text-slate-400 block uppercase font-medium font-bold">First contact emails</span>
+                <span className="text-[10px] text-slate-400 block uppercase font-medium font-bold">Initial Mails Today</span>
                 <span className="text-sm font-bold text-emerald-600 block mt-1">
-                  {firstContactToday}
+                  {initialToday}
                 </span>
               </div>
 
               <div
                 className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors"
                 onClick={() => {
-                  setRecipientsFilter('all'); // Show all prospects scheduled/sent
+                  setRecipientsFilter('all');
                   setActivePanel('drafts');
                 }}
               >
-                <span className="text-[10px] text-slate-400 block uppercase font-medium font-bold">Follow up emails</span>
+                <span className="text-[10px] text-slate-400 block uppercase font-medium font-bold">Follow-ups Today</span>
                 <span className="text-sm font-bold text-emerald-600 block mt-1">
                   {followUpsToday}
                 </span>
               </div>
 
+              <div
+                className="p-3 bg-[#FCFAF5] border border-slate-200/50 rounded-xl cursor-pointer hover:bg-[#F3ECD4] transition-colors"
+                onClick={() => {
+                  setRecipientsFilter('no_response');
+                  setActivePanel('drafts');
+                }}
+              >
+                <span className="text-[10px] text-slate-500 block uppercase font-medium font-bold">No Responses</span>
+                <span className="text-sm font-bold text-slate-700 block mt-1">
+                  {noResponseTotal} <span className="text-[9px] font-normal">Prospects</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Today's Follow-Up Breakdown Strip */}
+            <div className="flex items-center gap-3 p-3 bg-[#F8F9FA] border border-slate-200 rounded-xl mb-4 overflow-x-auto">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Today's Scheduled:</span>
+              <div 
+                className="flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-200 rounded-full cursor-pointer hover:bg-slate-50 transition-colors whitespace-nowrap"
+                onClick={() => { setRecipientsFilter('all'); setActivePanel('drafts'); }}
+              >
+                <span>📧</span>
+                <span className="text-[10px] font-bold text-slate-700">Initial: {initialToday}</span>
+              </div>
+              {Object.keys(followUpBreakdown).sort().map(stageStr => {
+                const stage = parseInt(stageStr);
+                return (
+                  <div 
+                    key={stage}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-200 rounded-full cursor-pointer hover:bg-slate-50 transition-colors whitespace-nowrap"
+                    onClick={() => { setRecipientsFilter('all'); setActivePanel('drafts'); }}
+                  >
+                    <span>🔄</span>
+                    <span className="text-[10px] font-bold text-slate-700">FU-{stage}: {followUpBreakdown[stage]}</span>
+                  </div>
+                );
+              })}
+              <div 
+                className="flex items-center gap-1.5 px-3 py-1 bg-[#F9FAFB] border border-slate-200 rounded-full cursor-pointer hover:bg-[#F3F4F6] transition-colors whitespace-nowrap ml-auto"
+                onClick={() => { setRecipientsFilter('no_response'); setActivePanel('drafts'); }}
+              >
+                <span>❄️</span>
+                <span className="text-[10px] font-bold text-slate-600">No-Response Today: {noResponseToday}</span>
+              </div>
             </div>
 
           </div>

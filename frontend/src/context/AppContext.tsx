@@ -37,6 +37,7 @@ export interface Recipient {
   next_follow_up_at?: string;
   follow_up_count?: number;
   max_follow_ups?: number;
+  cooling_off_until?: string;
   created_at: string;
 }
 

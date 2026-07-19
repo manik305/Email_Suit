@@ -963,10 +963,12 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         if next_count >= r.max_follow_ups:
                             await r.update({
                                 "$set": {
+                                    "status": "no_response",
                                     "follow_up_count": next_count,
                                     "next_follow_up_at": None,
                                     "last_sent_at": datetime.now(timezone.utc),
-                                    "last_message_id": msg_id
+                                    "last_message_id": msg_id,
+                                    "cooling_off_until": datetime.now(timezone.utc) + timedelta(days=45)
                                 }
                             })
                         else:

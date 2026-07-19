@@ -461,6 +461,9 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ first_name: '', company_name: '' });
   const [currentFilter, setCurrentFilter] = useState<string>(status);
+  const [showAllModal, setShowAllModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 50;
 
   // Sync state if prop changes
   useEffect(() => {
@@ -604,7 +607,7 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
             </tr>
           </thead>
         <tbody className="divide-y divide-slate-700/20">
-          {list.map(r => (
+          {(showAllModal ? list.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE) : list.slice(0, 10)).map(r => (
             <tr key={r.id} className="hover:bg-indigo-500/5 transition-colors">
               <td className="px-6 py-3">
                 {editingId === r.id ? (
@@ -680,11 +683,11 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
 
               <td className="px-6 py-3">
                 <div className="flex flex-col gap-1 items-start">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${r.status === 'sent' ? 'bg-emerald-500/10 text-emerald-400 font-extrabold' : 'bg-amber-500/10 text-amber-400 font-extrabold'}`}>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${r.status === 'sent' ? 'bg-emerald-500/10 text-emerald-400 font-extrabold' : r.status === 'no_response' ? 'bg-slate-500/10 text-slate-500 font-extrabold' : 'bg-amber-500/10 text-amber-400 font-extrabold'}`}>
                     {r.status}
                   </span>
-                  <span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold uppercase ${(!r.last_sent_at) ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
-                    {(!r.last_sent_at) ? 'Initial Mail' : `Follow-up ${(r.follow_up_count || 0) + 1}`}
+                  <span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold uppercase ${(!r.follow_up_count || r.follow_up_count === 0) ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : r.status === 'no_response' ? 'bg-slate-500/10 text-slate-500 border border-slate-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                    {(!r.follow_up_count || r.follow_up_count === 0) ? '📧 Initial Mail' : r.status === 'no_response' ? '❄️ No-Response' : `🔄 ${r.follow_up_count} Follow-Up`}
                   </span>
                 </div>
               </td>
@@ -729,6 +732,94 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
           ))}
         </tbody>
       </table>
+      )}
+      
+      {!showAllModal && list.length > 10 && (
+        <div className="flex justify-center mt-4">
+          <button
+            onClick={() => setShowAllModal(true)}
+            className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold transition-colors shadow-sm"
+          >
+            View All ({list.length}) Prospects →
+          </button>
+        </div>
+      )}
+
+      {showAllModal && (
+        <div className="fixed inset-0 z-[100] flex flex-col bg-slate-900/40 backdrop-blur-sm animate-in fade-in">
+          <div className="flex-1 max-w-6xl w-full mx-auto my-8 bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950">
+              <div>
+                <h3 className="text-base font-bold text-slate-200 uppercase tracking-wider">{label} Prospects</h3>
+                <p className="text-[10px] text-slate-400 mt-1">Showing {list.length} total recipients</p>
+              </div>
+              <button 
+                onClick={() => setShowAllModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"
+              >✕</button>
+            </div>
+            <div className="flex-1 overflow-auto custom-scrollbar p-0">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="text-[11px] uppercase tracking-wider text-slate-500 bg-slate-950 sticky top-0 z-10">
+                    <th className="px-6 py-3">First Name / Email</th>
+                    <th className="px-6 py-3">Company Name</th>
+                    <th className="px-6 py-3">Designation</th>
+                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 bg-slate-900">
+                  {list.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map(r => (
+                    <tr key={r.id} className="hover:bg-slate-800/50 transition-colors">
+                      <td className="px-6 py-3">
+                        <p className="text-slate-200 font-medium">{r.first_name || 'Unknown'}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{r.email}</p>
+                      </td>
+                      <td className="px-6 py-3 text-slate-400">{r.company_name || '—'}</td>
+                      <td className="px-6 py-3 text-slate-400">{r.designation || '—'}</td>
+                      <td className="px-6 py-3">
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${r.status === 'sent' ? 'bg-emerald-500/10 text-emerald-400 font-extrabold' : r.status === 'no_response' ? 'bg-slate-500/10 text-slate-500 font-extrabold' : 'bg-amber-500/10 text-amber-400 font-extrabold'}`}>
+                            {r.status}
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold uppercase ${(!r.follow_up_count || r.follow_up_count === 0) ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : r.status === 'no_response' ? 'bg-slate-500/10 text-slate-500 border border-slate-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                            {(!r.follow_up_count || r.follow_up_count === 0) ? '📧 Initial Mail' : r.status === 'no_response' ? '❄️ No-Response' : `🔄 ${r.follow_up_count} Follow-Up`}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-3">
+                        <button
+                          onClick={() => handlePreview(r)}
+                          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 font-bold rounded text-[10px] border border-slate-700 transition"
+                        >
+                          🔍 Preview
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-between items-center">
+              <span className="text-xs text-slate-500">
+                Page {currentPage} of {Math.ceil(list.length / ITEMS_PER_PAGE)}
+              </span>
+              <div className="flex gap-2">
+                <button 
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(p => p - 1)}
+                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 rounded text-xs transition"
+                >Prev</button>
+                <button 
+                  disabled={currentPage * ITEMS_PER_PAGE >= list.length}
+                  onClick={() => setCurrentPage(p => p + 1)}
+                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 rounded text-xs transition"
+                >Next</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ─── Draft Preview Modal ─────────────────────────────────────────────── */}

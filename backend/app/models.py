@@ -27,7 +27,7 @@ class Recipient(PostgresModel):
     zip_code: Optional[str] = None  # corresponds to 'zip_code' / pin_code in DB
     country: Optional[str] = None
     region: Optional[str] = None
-    status: str = "pending"  # pending, sent, bounced, replied
+    status: str = "pending"  # pending, sent, bounced, replied, no_response
     campaign_id: Optional[str] = None
     follow_up_count: int = 0
     max_follow_ups: int = 0
@@ -41,6 +41,7 @@ class Recipient(PostgresModel):
     response_category: Optional[str] = None  # 'lead' | 'hot' | 'cold' | 'negative' | 'bounce'
     response_text: Optional[str] = None
     last_message_id: Optional[str] = None
+    cooling_off_until: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Backwards compatibility properties for designation/pin_code/linkedin_id
