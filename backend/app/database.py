@@ -760,3 +760,27 @@ class QuerySet:
         async with db_pool.acquire() as conn:
             rows = await conn.fetch(query, *values)
             return [self.model_cls.from_row(r) for r in rows]
+
+    async def delete(self) -> int:
+        """Deletes rows matching the QuerySet filters and returns the number of deleted rows."""
+        if not db_pool:
+            return 0
+        table = self.model_cls.get_table_name()
+        where_clauses = []
+        values = []
+        idx = 1
+        
+        for k, v in self.filters.items():
+            where_clauses.append(f"{k} = ${idx}")
+            values.append(v)
+            idx += 1
+            
+        where_str = " AND ".join(where_clauses) if where_clauses else "TRUE"
+        query = f"DELETE FROM {table} WHERE {where_str}"
+        
+        async with db_pool.acquire() as conn:
+            result = await conn.execute(query, *values)
+            try:
+                return int(result.split(" ")[-1])
+            except Exception:
+                return 0

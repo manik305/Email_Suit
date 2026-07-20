@@ -79,18 +79,19 @@ def _build_mime_message(
     base_url = os.getenv("TRACKING_BASE_URL", "http://localhost:8000").rstrip("/")
 
     if recipient_id:
-        body = _rewrite_links_in_text(body, recipient_id, base_url)
+        # User requested to disable tracking (views/clicks) to build sender reputation.
+        # body = _rewrite_links_in_text(body, recipient_id, base_url)
         if not html_body:
             html_body = body.replace("\n", "<br/>")
-        html_body = _rewrite_links_in_html(html_body, recipient_id, base_url)
-        tracking_pixel = (
-            f'<img src="{base_url}/api/track/open/{recipient_id}" '
-            f'width="1" height="1" style="display:none !important;" alt="" />'
-        )
-        if "</body>" in html_body:
-            html_body = html_body.replace("</body>", f"{tracking_pixel}</body>")
-        else:
-            html_body = html_body + tracking_pixel
+        # html_body = _rewrite_links_in_html(html_body, recipient_id, base_url)
+        # tracking_pixel = (
+        #     f'<img src="{base_url}/api/track/open/{recipient_id}" '
+        #     f'width="1" height="1" style="display:none !important;" alt="" />'
+        # )
+        # if "</body>" in html_body:
+        #     html_body = html_body.replace("</body>", f"{tracking_pixel}</body>")
+        # else:
+        #     html_body = html_body + tracking_pixel
 
     msg = MIMEMultipart("alternative")
     
