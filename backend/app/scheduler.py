@@ -1317,10 +1317,11 @@ def stop_scheduler() -> None:
         logger.info("Campaign scheduler stopped")
 
 
-async def check_imap_inbox_for_updates(campaign: Campaign) -> None:
+async def check_imap_inbox_for_updates(campaign: Any) -> None:
     """Fetch recent IMAP messages and process any replies or bounces."""
-    if not campaign or not campaign.email_config_id:
+    if not campaign or not getattr(campaign, "email_config_id", None):
         return
+    from app.models import EmailConfig
     cfg = await EmailConfig.get(campaign.email_config_id)
     if not cfg or not cfg.imap:
         return
