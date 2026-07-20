@@ -324,5 +324,8 @@ class CampaignAnalyticsDetail(BaseModel):
     cold: int = 0
     negative: int = 0
     bounce_classified: int = 0
+    ooo: int = 0
+    automatic: int = 0
+    not_bounce: int = 0
     delivery_rate: float = 0.0
     response_rate: float = 0.0

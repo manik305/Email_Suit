@@ -543,7 +543,7 @@ async def get_campaign_graph(campaign_id: str):
 async def get_campaign_inbox(
     campaign_id: str,
     mailbox: str = Query(default="INBOX"),
-    limit: int = Query(default=100, le=500),
+    limit: int = Query(default=60, le=500),
 ):
     """
     Fetch the most recent messages from the IMAP mailbox of the campaign's
@@ -674,7 +674,10 @@ async def get_analytics_detail(
     cold = len([r for r in recipients if r.response_category == "cold"])
     negative = len([r for r in recipients if r.response_category == "negative"])
     bounce_classified = len([r for r in recipients if r.response_category == "bounce"])
-    total_responded = leads + hot + cold + negative + bounce_classified
+    ooo = len([r for r in recipients if r.response_category == "ooo"])
+    automatic = len([r for r in recipients if r.response_category == "automatic"])
+    not_bounce = len([r for r in recipients if r.response_category == "not_bounce"])
+    total_responded = leads + hot + cold + negative + bounce_classified + ooo + automatic + not_bounce
 
     total_followups_sent = sum(r.follow_up_count for r in recipients)
     total_followups_pending = len([r for r in recipients if r.status == "sent" and r.next_follow_up_at])
@@ -707,6 +710,9 @@ async def get_analytics_detail(
         cold=cold,
         negative=negative,
         bounce_classified=bounce_classified,
+        ooo=ooo,
+        automatic=automatic,
+        not_bounce=not_bounce,
         delivery_rate=delivery_rate,
         response_rate=response_rate,
     )

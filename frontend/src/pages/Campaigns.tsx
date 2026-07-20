@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext, API_BASE_URL, CreateCampaignPayload } from '../context/AppContext';
 import { ALL_TIMEZONES, TZ_REGIONS, localToUtc, utcToLocal } from '../data/timezones';
-import { InboxPanel, RecipientsPanel, AnalyticsPanel } from '../components/CampaignPanels';
+import { InboxPanel, ResponsesPanel, RecipientsPanel, AnalyticsPanel } from '../components/CampaignPanels';
 import EmailConfigPanel from '../components/EmailConfigPanel';
 import DataIntegrationPanel from '../components/DataIntegrationPanel';
 import { GraphDashboard } from '../components/GraphDashboard';
@@ -705,6 +705,7 @@ const CampaignsPage: React.FC = () => {
 
   const PANELS = [
     { key:'inbox'            as Panel, label:'Inbox',            color:'text-blue-400',   icon:'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+    { key:'responses'        as Panel, label:'Responses',        color:'text-indigo-400', icon:'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z' },
     { key:'graph'            as Panel, label:'Neo4j Graph',      color:'text-amber-500',  icon:'M9 20l-5.447-2.724A2 2 0 013 15.447V8.553a2 2 0 011.053-1.789L9 4m0 16v-8m0 8l5.447-2.724A2 2 0 0015 15.447V8.553a2 2 0 00-1.053-1.789L9 4m0 0l5.447 2.724A2 2 0 0115 8.553v6.894a2 2 0 01-1.053 1.789L9 20' },
     { key:'data-integration' as Panel, label:'Data Integration', color:'text-cyan-400',   icon:'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4' },
     { key:'drafts'           as Panel, label:'Drafts',           color:'text-amber-400',  icon:'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
@@ -1358,6 +1359,7 @@ const CampaignsPage: React.FC = () => {
               {activePanel && selectedId && (
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                   {activePanel === 'inbox' && <InboxPanel campaignId={selectedId} projectId={selectedProjectId}/>}
+                  {activePanel === 'responses' && <ResponsesPanel campaignId={selectedId} projectId={selectedProjectId}/>}
                   {activePanel === 'graph' && <GraphDashboard campaignId={selectedId} projectId={selectedProjectId}/>}
                   {activePanel === 'data-integration' && (
                     <DataIntegrationPanel

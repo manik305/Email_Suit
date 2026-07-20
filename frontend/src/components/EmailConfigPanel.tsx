@@ -257,12 +257,19 @@ const EmailConfigPanel: React.FC<Props> = ({ campaignId, linkedConfigId, onLinke
       )}
 
       {/* Header row */}
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-slate-400">
-          {linkedConfigId
-            ? `✅ Mailer linked · ${configs.find(c => c.id === linkedConfigId)?.sender_address ?? linkedConfigId}`
-            : '⚠️ No mailer linked — link one below or create new.'}
-        </p>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex-1">
+          {linkedConfigId ? (
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl shadow-sm">
+              <span className="text-emerald-500 font-bold text-sm">✅ Linked Email:</span>
+              <span className="text-emerald-400 font-mono text-sm tracking-wide font-medium">
+                {configs.find(c => c.id === linkedConfigId)?.sender_address ?? linkedConfigId}
+              </span>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400">⚠️ No mailer linked — link one below or create new.</p>
+          )}
+        </div>
         <button
           onClick={() => { setEditId(null); setForm(blank()); setShowForm(v => !v); }}
           className="text-xs px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all font-medium"

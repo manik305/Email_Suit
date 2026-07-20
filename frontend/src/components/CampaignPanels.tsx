@@ -55,13 +55,14 @@ async function aiDraft(p:{campaign_name:string;target_segment?:string;tone?:stri
 
 // ─── Classification Badge ─────────────────────────────────────────────────────
 const CategoryBadge: React.FC<{ category: string; size?: 'sm' | 'md' }> = ({ category, size = 'sm' }) => {
-  const config: Record<string, { icon: string; label: string; bg: string; text: string; border: string }> = {
-    lead:     { icon: '🟢', label: 'Lead',     bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200' },
-    hot:      { icon: '🔥', label: 'Hot',      bg: 'bg-orange-50',   text: 'text-orange-700',   border: 'border-orange-200' },
-    cold:     { icon: '❄️', label: 'Cold',     bg: 'bg-blue-50',     text: 'text-blue-700',     border: 'border-blue-200' },
-    negative: { icon: '👎', label: 'Negative', bg: 'bg-red-50',      text: 'text-red-700',      border: 'border-red-200' },
-    bounce:   { icon: '🚫', label: 'Bounce',   bg: 'bg-gray-100',    text: 'text-gray-700',     border: 'border-gray-300' },
-  };
+    lead:       { icon: '🟢', label: 'Lead',            bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200' },
+    hot:        { icon: '🔥', label: 'Hot',             bg: 'bg-orange-50',   text: 'text-orange-700',   border: 'border-orange-200' },
+    cold:       { icon: '❄️', label: 'Cold',            bg: 'bg-blue-50',     text: 'text-blue-700',     border: 'border-blue-200' },
+    negative:   { icon: '👎', label: 'Negative',        bg: 'bg-red-50',      text: 'text-red-700',      border: 'border-red-200' },
+    ooo:        { icon: '✈️', label: 'Out of Office',   bg: 'bg-purple-50',   text: 'text-purple-700',   border: 'border-purple-200' },
+    automatic:  { icon: '🤖', label: 'Automatic Reply', bg: 'bg-gray-100',    text: 'text-gray-700',     border: 'border-gray-300' },
+    not_bounce: { icon: '✅', label: 'Not a Bounce',    bg: 'bg-teal-50',     text: 'text-teal-700',     border: 'border-teal-200' },
+    bounce:     { icon: '🚫', label: 'Bounce',          bg: 'bg-gray-100',    text: 'text-gray-700',     border: 'border-gray-300' },
   const c = config[category] || config.bounce;
   const sizeClass = size === 'md' ? 'px-3 py-1 text-xs' : 'px-2 py-0.5 text-[10px]';
   return (
@@ -85,11 +86,14 @@ const ClassifyModal: React.FC<{
   const [saving, setSaving] = useState(false);
 
   const categories = [
-    { key: 'lead',     icon: '🟢', label: 'Lead',     desc: 'Interested prospect — wants to learn more', color: 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-400' },
-    { key: 'hot',      icon: '🔥', label: 'Hot',      desc: 'High-priority — ready for immediate action', color: 'border-orange-300 bg-orange-50 hover:bg-orange-100 hover:border-orange-400' },
-    { key: 'cold',     icon: '❄️', label: 'Cold',     desc: 'Not interested right now, maybe later', color: 'border-blue-300 bg-blue-50 hover:bg-blue-100 hover:border-blue-400' },
-    { key: 'negative', icon: '👎', label: 'Negative', desc: 'Explicitly not interested or hostile response', color: 'border-red-300 bg-red-50 hover:bg-red-100 hover:border-red-400' },
-    { key: 'bounce',   icon: '🚫', label: 'Bounce',   desc: 'Email delivery failed — address invalid', color: 'border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400' },
+    { key: 'lead',       icon: '🟢', label: 'Lead',            desc: 'Interested prospect — wants to learn more', color: 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-400' },
+    { key: 'hot',        icon: '🔥', label: 'Hot',             desc: 'High-priority — ready for immediate action', color: 'border-orange-300 bg-orange-50 hover:bg-orange-100 hover:border-orange-400' },
+    { key: 'cold',       icon: '❄️', label: 'Cold',            desc: 'Not interested right now, maybe later', color: 'border-blue-300 bg-blue-50 hover:bg-blue-100 hover:border-blue-400' },
+    { key: 'negative',   icon: '👎', label: 'Negative',        desc: 'Explicitly not interested or hostile response', color: 'border-red-300 bg-red-50 hover:bg-red-100 hover:border-red-400' },
+    { key: 'ooo',        icon: '✈️', label: 'Out of Office',   desc: 'Auto-reply, recipient is away', color: 'border-purple-300 bg-purple-50 hover:bg-purple-100 hover:border-purple-400' },
+    { key: 'automatic',  icon: '🤖', label: 'Automatic Reply', desc: 'System generated or auto-reply', color: 'border-gray-300 bg-gray-100 hover:bg-gray-200 hover:border-gray-400' },
+    { key: 'not_bounce', icon: '✅', label: 'Not a Bounce',    desc: 'Legitimate email, overriding a false bounce', color: 'border-teal-300 bg-teal-50 hover:bg-teal-100 hover:border-teal-400' },
+    { key: 'bounce',     icon: '🚫', label: 'Bounce',          desc: 'Email delivery failed — address invalid', color: 'border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400' },
   ];
 
   // Extract sender email
@@ -237,7 +241,7 @@ const InboxPanel: React.FC<{ campaignId: string; projectId?: string }> = ({ camp
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
     
-    fetch(`${API_BASE_URL}/campaigns/${campaignId}/inbox?limit=100`, { headers })
+    fetch(`${API_BASE_URL}/campaigns/${campaignId}/inbox?limit=60`, { headers })
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(d => {
         if (d.error) {
@@ -400,45 +404,6 @@ const InboxPanel: React.FC<{ campaignId: string; projectId?: string }> = ({ camp
           <span className="text-xs font-bold text-gray-700">{msgs.length} message{msgs.length !== 1 ? 's' : ''}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button 
-            onClick={async () => {
-              const token = localStorage.getItem('access_token');
-              const headers: Record<string, string> = {};
-              if (token) headers['Authorization'] = `Bearer ${token}`;
-              fetch(`${API_BASE_URL}/campaigns/${campaignId}/bounces/download`, { headers })
-                .then(r => {
-                   if(!r.ok) throw new Error("Failed to download");
-                   return r.blob();
-                })
-                .then(blob => {
-                  const url = window.URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `bounces_${campaignId}.csv`;
-                  a.click();
-                  window.URL.revokeObjectURL(url);
-                })
-                .catch(e => alert(e.message));
-            }}
-            className="text-[11px] text-gray-500 hover:text-gray-700 font-semibold transition-colors flex items-center gap-1"
-          >
-            📥 Download Bounces
-          </button>
-          <button 
-            onClick={async () => {
-              if(confirm('Are you sure you want to delete all bounced recipients from this campaign?')) {
-                 const token = localStorage.getItem('access_token');
-                 await fetch(`${API_BASE_URL}/campaigns/${campaignId}/bounces`, { 
-                   method: 'DELETE', 
-                   headers: token ? {'Authorization': `Bearer ${token}`} : {}
-                 });
-                 fetchInbox();
-              }
-            }} 
-            className="text-[11px] text-red-500 hover:text-red-700 font-semibold transition-colors flex items-center gap-1 mx-2"
-          >
-            🗑️ Delete Bounces
-          </button>
           <button onClick={fetchInbox} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-semibold transition-colors">
             🔄 Refresh
           </button>
@@ -1187,5 +1152,940 @@ const AnalyticsPanel: React.FC<{ campaign: Campaign }> = ({ campaign }) => {
   );
 };
 
-export { InboxPanel, RecipientsPanel, AnalyticsPanel };
+export { InboxPanel, ResponsesPanel, RecipientsPanel, AnalyticsPanel };
+export type { Recipient };// ─── Sub-panel: Responses (Queue) ───────────────
+const ResponsesPanel: React.FC<{ campaignId: string; projectId?: string }> = ({ campaignId, projectId }) => {
+  const [msgs, setMsgs] = useState<InboxMsg[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [selectedMsg, setSelectedMsg] = useState<InboxMsg | null>(null);
+  const [showClassifyModal, setShowClassifyModal] = useState(false);
+
+  const fetchInbox = useCallback(() => {
+    setLoading(true);
+    const token = localStorage.getItem('access_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    
+    fetch(`${API_BASE_URL}/campaigns/${campaignId}/inbox?limit=60`, { headers })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(d => {
+        if (d.error) {
+          setErr(d.error);
+        }
+        
+        const unclassified = (d.messages ?? []).filter((m: any) => {
+          const isBounce = m.response_category === 'bounce' ||
+                           m.subject.toLowerCase().includes('delivery status') || 
+                           m.subject.toLowerCase().includes('undelivered') ||
+                           m.from_addr.toLowerCase().includes('mailer-daemon');
+          return !m.response_category && !isBounce;
+        });
+        setMsgs(unclassified);
+
+        setLoading(false);
+      })
+      .catch(e => { setErr(`Failed to load inbox (${e}). Check IMAP config.`); setLoading(false); });
+  }, [campaignId]);
+
+  useEffect(() => {
+    fetchInbox();
+  }, [fetchInbox]);
+
+  const handleClassified = (category: string) => {
+    // Remove the classified message from the unclassified queue
+    if (selectedMsg) {
+      setMsgs(prev => prev.filter(m => m.uid !== selectedMsg.uid));
+    }
+    setSelectedMsg(null);
+    setShowClassifyModal(false);
+  };
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-12">
+      <div className="flex items-center gap-3">
+        <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+        <span className="text-sm text-gray-500 font-medium">Loading queue…</span>
+      </div>
+    </div>
+  );
+
+  // We no longer return early if there's an error. We want to show the error banner AND any loaded messages (e.g. bounces).
+
+  if (!msgs.length) return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+      </div>
+      <p className="text-sm font-medium text-gray-500">No unclassified responses</p>
+      <p className="text-xs text-gray-400 mt-1">All responses have been classified!</p>
+    </div>
+  );
+
+  // ─── Message Detail View ─────────────────────────────────────────────
+  if (selectedMsg) {
+    const isBounce = selectedMsg.response_category === 'bounce' ||
+                     selectedMsg.subject.toLowerCase().includes('delivery status') || 
+                     selectedMsg.subject.toLowerCase().includes('undelivered') ||
+                     selectedMsg.from_addr.toLowerCase().includes('mailer-daemon');
+
+    const currentCategory = selectedMsg.response_category || (isBounce ? 'bounce' : null);
+
+    return (
+      <div className="bg-white rounded-xl">
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+          <button 
+            onClick={() => setSelectedMsg(null)}
+            className="flex items-center gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-all bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-100"
+          >
+            ← Back to Queue
+          </button>
+          <div className="flex items-center gap-2">
+            {currentCategory && <CategoryBadge category={currentCategory} size="md" />}
+            <button
+              onClick={() => setShowClassifyModal(true)}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-all shadow-sm"
+            >
+              {currentCategory ? '🔄 Re-classify' : '🏷️ Classify Response'}
+            </button>
+          </div>
+        </div>
+
+        {/* Message metadata */}
+        <div className="px-6 py-5 border-b border-gray-50 space-y-3">
+          <h2 className="text-base font-bold text-gray-900 leading-snug">{selectedMsg.subject}</h2>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block mb-0.5">From</span>
+              <span className="text-xs text-gray-700 font-medium">{selectedMsg.from_addr}</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block mb-0.5">Date</span>
+              <span className="text-xs text-gray-500">{selectedMsg.date}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Message body — clean white readable view */}
+        <div className="px-6 py-5">
+          <div className="bg-white text-sm text-gray-800 leading-relaxed whitespace-pre-wrap max-h-[450px] overflow-y-auto font-[system-ui,-apple-system,sans-serif]"
+            style={{ lineHeight: '1.7' }}
+          >
+            {selectedMsg.body || selectedMsg.snippet}
+          </div>
+        </div>
+
+        {/* Bounce warning */}
+        {isBounce && (
+          <div className="mx-6 mb-5 p-4 rounded-xl bg-red-50 border border-red-200 flex items-start gap-3">
+            <span className="text-red-500 text-lg mt-0.5">🚫</span>
+            <div>
+              <p className="text-xs font-semibold text-red-800">This email bounced — address is invalid or inactive</p>
+              <p className="text-[11px] text-red-600 mt-0.5">The recipient has been automatically flagged. No further follow-ups will be sent.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Classify Modal */}
+        {showClassifyModal && (
+          <ClassifyModal
+            msg={selectedMsg}
+            campaignId={campaignId}
+            projectId={projectId}
+            onClose={() => setShowClassifyModal(false)}
+            onClassified={handleClassified}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ─── Message List View ───────────────────────────────────────────────
+  return (
+    <div className="flex flex-col gap-4">
+      {err && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm relative">
+          <button 
+            onClick={() => setErr('')} 
+            className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-red-400 hover:text-red-600 hover:bg-red-100"
+          >
+            ✕
+          </button>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-base">⚠️</span>
+            <h4 className="font-bold text-red-800 text-xs">IMAP Connection Failure</h4>
+          </div>
+          <p className="text-[11px] text-red-700 mb-2 leading-relaxed max-w-[90%]">
+            We couldn't connect to the IMAP server. System bounces are still visible, but normal replies won't load until this is fixed.
+          </p>
+          <div className="bg-white p-2 rounded-lg border border-red-100 font-mono text-[10px] text-red-900 overflow-x-auto">
+            {err}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl overflow-hidden shadow-sm">
+        {/* Header */}
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          <span className="text-xs font-bold text-gray-700">{msgs.length} message{msgs.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={fetchInbox} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-semibold transition-colors">
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="divide-y divide-gray-100">
+        {msgs.map(m => {
+          const isBounce = m.response_category === 'bounce' ||
+                           m.subject.toLowerCase().includes('delivery status') || 
+                           m.subject.toLowerCase().includes('undelivered') ||
+                           m.from_addr.toLowerCase().includes('mailer-daemon');
+          const effectiveCategory = m.response_category || (isBounce ? 'bounce' : null);
+          
+          return (
+            <div 
+              key={m.uid} 
+              onClick={() => setSelectedMsg(m)}
+              className="px-5 py-4 hover:bg-indigo-50/50 transition-all cursor-pointer group flex items-start justify-between gap-4"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  {/* Sender initial avatar */}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${
+                    isBounce ? 'bg-red-400' : effectiveCategory ? 'bg-indigo-400' : 'bg-gray-400'
+                  }`}>
+                    {(m.from_addr[0] || '?').toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-800 truncate">
+                        {m.subject}
+                      </span>
+                      {effectiveCategory && <CategoryBadge category={effectiveCategory} />}
+                    </div>
+                    <p className="text-xs text-gray-500 font-medium truncate">{m.from_addr}</p>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 mt-1 truncate leading-relaxed pl-10">{m.snippet}</p>
+              </div>
+              <div className="text-right flex-shrink-0 flex flex-col items-end gap-2">
+                <span className="text-[10px] text-gray-400">{m.date.split(',')[0] || m.date.split(' ').slice(0,3).join(' ')}</span>
+                <span className="text-indigo-500 group-hover:translate-x-0.5 inline-block transition-transform text-[11px] font-semibold opacity-0 group-hover:opacity-100">
+                  Open →
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+    </div>
+  );
+};
+
+// ─── Sub-panel: Recipients by status ─────────────────────────────────────────
+const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ campaignId, status }) => {
+  const [list, setList] = useState<Recipient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ first_name: '', company_name: '' });
+  const [currentFilter, setCurrentFilter] = useState<string>(status);
+  const [showAllModal, setShowAllModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 50;
+
+  // Sync state if prop changes
+  useEffect(() => {
+    setCurrentFilter(status);
+  }, [status]);
+  
+  // States for Draft Preview Modal
+  const [previewMsg, setPreviewMsg] = useState<{
+    subject: string;
+    body: string;
+    mail_type?: string;
+    thread_history?: Array<{
+      mail_type: string;
+      subject: string;
+      body: string;
+      sent_at?: string;
+    }>;
+  } | null>(null);
+  const [selectedRecipient, setSelectedRecipient] = useState<Recipient | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
+  const labelMap: Record<string, string> = {
+    all: 'All Prospects',
+    pending: 'Drafts (Queued)',
+    sent: 'Sent',
+    bounced: 'Bounced (Technical)',
+    replied: 'Replied',
+    hot: 'Hot Classification',
+    cold: 'Cold Classification',
+    lead: 'Lead Classification',
+    negative: 'Negative Classification',
+    bounce: 'Bounce Classification'
+  };
+
+  const label = labelMap[currentFilter] || currentFilter;
+
+  const fetchRecipients = useCallback(() => {
+    setLoading(true);
+    fetch(`${API_BASE_URL}/data/recipients/by-campaign/${campaignId}`)
+      .then(r => r.json())
+      .then((all: Recipient[]) => {
+        let filtered = all;
+        if (currentFilter === 'pending') {
+          filtered = all.filter(r => r.status === 'pending');
+        } else if (currentFilter === 'sent') {
+          filtered = all.filter(r => r.status === 'sent');
+        } else if (currentFilter === 'bounced') {
+          filtered = all.filter(r => r.status === 'bounced');
+        } else if (currentFilter === 'replied') {
+          filtered = all.filter(r => r.status === 'replied');
+        } else if (['hot', 'cold', 'lead', 'negative', 'bounce'].includes(currentFilter)) {
+          filtered = all.filter(r => r.response_category === currentFilter);
+        }
+        setList(filtered);
+        setLoading(false);
+      });
+  }, [campaignId, currentFilter]);
+
+  useEffect(() => {
+    fetchRecipients();
+  }, [fetchRecipients]);
+
+  const handleSaveEdit = async (rid: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/data/recipients/${rid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
+      });
+      if (res.ok) {
+        setEditingId(null);
+        fetchRecipients();
+      }
+    } catch (e) {
+      console.error('Failed to update recipient details:', e);
+    }
+  };
+
+  const handlePreview = async (recipient: Recipient) => {
+    setSelectedRecipient(recipient);
+    setLoadingPreview(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/data/recipients/${recipient.id}/preview`);
+      if (res.ok) {
+        const d = await res.json();
+        setPreviewMsg(d);
+      }
+    } catch (e) {
+      console.error('Failed to fetch preview details:', e);
+    }
+    setLoadingPreview(false);
+  };
+
+  if (loading) return <p className="text-slate-500 text-sm py-8 text-center">Loading…</p>;
+
+  return (
+    <div className="overflow-x-auto space-y-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-2 border-b border-slate-100 gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Prospects List</h3>
+          <p className="text-[10px] text-slate-400">Viewing filtered prospects for this campaign</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="recipients-filter" className="text-[10px] font-bold text-slate-400 uppercase">Filter:</label>
+          <select
+            id="recipients-filter"
+            value={currentFilter}
+            onChange={(e) => setCurrentFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-650 focus:outline-none"
+          >
+            <option value="all">All Prospects</option>
+            <option value="pending">Drafts / Pending</option>
+            <option value="sent">Sent</option>
+            <option value="bounced">Bounced (Technical)</option>
+            <option value="replied">Replied</option>
+            <option value="hot">🔥 Hot Leads</option>
+            <option value="cold">❄️ Cold</option>
+            <option value="lead">🟢 Leads</option>
+            <option value="negative">👎 Negative</option>
+            <option value="bounce">🚫 Bounce Classified</option>
+          </select>
+        </div>
+      </div>
+
+      {!list.length ? (
+        <p className="text-slate-500 text-sm py-8 text-center">No {label.toLowerCase()} emails found.</p>
+      ) : (
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="text-[11px] uppercase tracking-wider text-slate-500 bg-slate-900/40">
+              <th className="px-6 py-3">First Name / Email</th>
+              <th className="px-6 py-3">Company Name</th>
+              <th className="px-6 py-3">Designation</th>
+              {currentFilter === 'pending' ? (
+                <th className="px-6 py-3">Scheduled Send</th>
+              ) : (
+                <th className="px-6 py-3">Scheduled Follow-up</th>
+              )}
+              <th className="px-6 py-3">Status</th>
+              <th className="px-6 py-3">Actions</th>
+            </tr>
+          </thead>
+        <tbody className="divide-y divide-slate-700/20">
+          {(showAllModal ? list.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE) : list.slice(0, 10)).map(r => (
+            <tr key={r.id} className="hover:bg-indigo-500/5 transition-colors">
+              <td className="px-6 py-3">
+                {editingId === r.id ? (
+                  <input
+                    type="text"
+                    value={editForm.first_name || ''}
+                    onChange={e => setEditForm(p => ({ ...p, first_name: e.target.value }))}
+                    className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs w-full"
+                    placeholder="First Name"
+                  />
+                ) : (
+                  <p className="text-slate-200 font-medium">{r.first_name || 'Unknown'}</p>
+                )}
+                <p className="text-xs text-slate-500 mt-0.5">{r.email}</p>
+                {r.response_category && (
+                  <CategoryBadge category={r.response_category} />
+                )}
+                {r.response_text && (
+                  <div className="mt-1.5 p-2 bg-slate-900/60 border border-slate-700/30 rounded-lg text-[10px] text-slate-400 italic max-w-xs whitespace-pre-wrap leading-relaxed">
+                    💬 "{r.response_text}"
+                  </div>
+                )}
+              </td>
+              <td className="px-6 py-3">
+                {editingId === r.id ? (
+                  <input
+                    type="text"
+                    value={editForm.company_name}
+                    onChange={e => setEditForm(p => ({ ...p, company_name: e.target.value }))}
+                    className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs w-full"
+                  />
+                ) : (
+                  <span className="text-slate-400">{r.company_name || '—'}</span>
+                )}
+              </td>
+              <td className="px-6 py-3 text-slate-400">{r.designation || '—'}</td>
+              
+              {currentFilter === 'pending' ? (
+                <td className="px-6 py-3 text-slate-400 font-mono text-[11px]">
+                  {r.send_at ? new Date(r.send_at).toLocaleString('en-US', { 
+                    timeZone: 'Asia/Kolkata',
+                    month: 'short', 
+                    day: 'numeric', 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    timeZoneName: 'short'
+                  }) : 'Pending launch'}
+                </td>
+              ) : (
+                <td className="px-6 py-3 text-slate-400 font-mono text-[11px]">
+                  {r.next_follow_up_at ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[9px] font-bold text-amber-500 uppercase">
+                        Stage {(r.follow_up_count || 0) + 1}
+                      </span>
+                      <span>
+                        {new Date(r.next_follow_up_at).toLocaleString('en-US', { 
+                          timeZone: 'Asia/Kolkata',
+                          month: 'short', 
+                          day: 'numeric', 
+                          hour: '2-digit', 
+                          minute: '2-digit',
+                          timeZoneName: 'short'
+                        })}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-slate-500">None / Completed</span>
+                  )}
+                </td>
+              )}
+
+
+              <td className="px-6 py-3">
+                <div className="flex flex-col gap-1 items-start">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${r.status === 'sent' ? 'bg-emerald-500/10 text-emerald-400 font-extrabold' : r.status === 'no_response' ? 'bg-slate-500/10 text-slate-500 font-extrabold' : 'bg-amber-500/10 text-amber-400 font-extrabold'}`}>
+                    {r.status}
+                  </span>
+                  <span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold uppercase ${(!r.follow_up_count || r.follow_up_count === 0) ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : r.status === 'no_response' ? 'bg-slate-500/10 text-slate-500 border border-slate-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                    {(!r.follow_up_count || r.follow_up_count === 0) ? '📧 Initial Mail' : r.status === 'no_response' ? '❄️ No-Response' : `🔄 ${r.follow_up_count} Follow-Up`}
+                  </span>
+                </div>
+              </td>
+              <td className="px-6 py-3">
+                {editingId === r.id ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleSaveEdit(r.id)}
+                      className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded text-[10px] transition"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="px-2 py-1 bg-slate-700 hover:bg-slate-650 text-slate-200 font-bold rounded text-[10px] transition"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingId(r.id);
+                        setEditForm({ first_name: r.first_name || '', company_name: r.company_name || '' });
+                      }}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-indigo-400 hover:text-indigo-300 font-bold rounded text-[10px] border border-slate-700 transition"
+                    >
+                      Edit Draft Fields
+                    </button>
+                    <button
+                      onClick={() => handlePreview(r)}
+                      disabled={loadingPreview}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 font-bold rounded text-[10px] border border-slate-700 transition flex items-center gap-1 disabled:opacity-40"
+                    >
+                      🔍 Preview
+                    </button>
+                  </div>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      )}
+      
+      {!showAllModal && list.length > 10 && (
+        <div className="flex justify-center mt-4">
+          <button
+            onClick={() => setShowAllModal(true)}
+            className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold transition-colors shadow-sm"
+          >
+            View All ({list.length}) Prospects →
+          </button>
+        </div>
+      )}
+
+      {showAllModal && (
+        <div className="fixed inset-0 z-[100] flex flex-col bg-slate-900/40 backdrop-blur-sm animate-in fade-in">
+          <div className="flex-1 max-w-6xl w-full mx-auto my-8 bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950">
+              <div>
+                <h3 className="text-base font-bold text-slate-200 uppercase tracking-wider">{label} Prospects</h3>
+                <p className="text-[10px] text-slate-400 mt-1">Showing {list.length} total recipients</p>
+              </div>
+              <button 
+                onClick={() => setShowAllModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"
+              >✕</button>
+            </div>
+            <div className="flex-1 overflow-auto custom-scrollbar p-0">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="text-[11px] uppercase tracking-wider text-slate-500 bg-slate-950 sticky top-0 z-10">
+                    <th className="px-6 py-3">First Name / Email</th>
+                    <th className="px-6 py-3">Company Name</th>
+                    <th className="px-6 py-3">Designation</th>
+                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 bg-slate-900">
+                  {list.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map(r => (
+                    <tr key={r.id} className="hover:bg-slate-800/50 transition-colors">
+                      <td className="px-6 py-3">
+                        <p className="text-slate-200 font-medium">{r.first_name || 'Unknown'}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{r.email}</p>
+                      </td>
+                      <td className="px-6 py-3 text-slate-400">{r.company_name || '—'}</td>
+                      <td className="px-6 py-3 text-slate-400">{r.designation || '—'}</td>
+                      <td className="px-6 py-3">
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${r.status === 'sent' ? 'bg-emerald-500/10 text-emerald-400 font-extrabold' : r.status === 'no_response' ? 'bg-slate-500/10 text-slate-500 font-extrabold' : 'bg-amber-500/10 text-amber-400 font-extrabold'}`}>
+                            {r.status}
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold uppercase ${(!r.follow_up_count || r.follow_up_count === 0) ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : r.status === 'no_response' ? 'bg-slate-500/10 text-slate-500 border border-slate-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                            {(!r.follow_up_count || r.follow_up_count === 0) ? '📧 Initial Mail' : r.status === 'no_response' ? '❄️ No-Response' : `🔄 ${r.follow_up_count} Follow-Up`}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-3">
+                        <button
+                          onClick={() => handlePreview(r)}
+                          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 font-bold rounded text-[10px] border border-slate-700 transition"
+                        >
+                          🔍 Preview
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-between items-center">
+              <span className="text-xs text-slate-500">
+                Page {currentPage} of {Math.ceil(list.length / ITEMS_PER_PAGE)}
+              </span>
+              <div className="flex gap-2">
+                <button 
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(p => p - 1)}
+                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 rounded text-xs transition"
+                >Prev</button>
+                <button 
+                  disabled={currentPage * ITEMS_PER_PAGE >= list.length}
+                  onClick={() => setCurrentPage(p => p + 1)}
+                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 rounded text-xs transition"
+                >Next</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Draft Preview Modal ─────────────────────────────────────────────── */}
+      {previewMsg && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-[#1E293B] border border-slate-700/80 w-full max-w-xl rounded-3xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-slate-100 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-700/60">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm text-indigo-400 uppercase tracking-wider">📧 Email Draft Preview</h3>
+                {previewMsg.mail_type && (
+                  <span className="text-[9px] font-extrabold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                    {previewMsg.mail_type}
+                  </span>
+                )}
+              </div>
+              <button 
+                onClick={() => {
+                  setPreviewMsg(null);
+                  setSelectedRecipient(null);
+                }}
+                className="text-slate-400 hover:text-slate-200 transition text-sm font-bold bg-slate-800 hover:bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-bold mb-1">Subject</span>
+                <p className="text-xs font-semibold text-slate-200 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">{previewMsg.subject}</p>
+              </div>
+              
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-bold mb-1">Message Content</span>
+                <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800/80 text-xs text-slate-300 font-mono leading-relaxed whitespace-pre-wrap max-h-[220px] overflow-y-auto custom-scrollbar">
+                  {previewMsg.body}
+                </div>
+              </div>
+
+              {/* Thread History (Already Sent Emails in this Thread) */}
+              {previewMsg.thread_history && previewMsg.thread_history.length > 0 && (
+                <div className="space-y-3 pt-3 border-t border-slate-700/60">
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-bold">Conversation Thread (Sent Emails)</span>
+                  <div className="space-y-2.5 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+                    {previewMsg.thread_history.map((th, index) => (
+                      <div key={index} className="p-3 bg-slate-900/40 border border-slate-800/60 rounded-xl space-y-1.5">
+                        <div className="flex justify-between items-center pb-1 border-b border-slate-800/40">
+                          <span className="text-[9px] font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded uppercase">{th.mail_type}</span>
+                          {th.sent_at && (
+                            <span className="text-[8px] text-slate-400 font-mono">
+                              Sent: {new Date(th.sent_at).toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-slate-500 block font-semibold">Subject</span>
+                          <p className="text-[11px] font-semibold text-slate-300">{th.subject}</p>
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-slate-500 block font-semibold">Content</span>
+                          <div className="text-[11px] text-slate-400 font-mono leading-relaxed whitespace-pre-wrap mt-0.5 bg-slate-900/20 p-2 rounded border border-slate-800/20 max-h-[80px] overflow-y-auto custom-scrollbar">
+                            {th.body}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Recipient Variables Metadata Grid */}
+              {selectedRecipient && (
+                <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80 space-y-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-extrabold text-[10px] text-indigo-400 uppercase tracking-wider">📋 Loaded Recipient Variables</h4>
+                    <span className="text-[9px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/50">
+                      ID: {selectedRecipient.id.slice(0, 8)}...
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 text-slate-350">
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-semibold mb-0.5">First Name</span>
+                      <span className="font-semibold text-slate-250 text-[11px] truncate block">{selectedRecipient.first_name || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-semibold mb-0.5">Last Name</span>
+                      <span className="font-semibold text-slate-250 text-[11px] truncate block">{selectedRecipient.last_name || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-semibold mb-0.5">Company Name</span>
+                      <span className="font-semibold text-slate-250 text-[11px] truncate block">{selectedRecipient.company_name || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-semibold mb-0.5">Designation</span>
+                      <span className="font-semibold text-slate-250 text-[11px] truncate block">{selectedRecipient.designation || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-semibold mb-0.5">Target Email</span>
+                      <span className="font-semibold text-indigo-400 text-[11px] truncate block font-mono">{selectedRecipient.email}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-semibold mb-0.5">Alternative Email</span>
+                      <span className="font-semibold text-slate-250 text-[11px] truncate block font-mono">{selectedRecipient.alternative_email || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-semibold mb-0.5">Website</span>
+                      {selectedRecipient.website ? (
+                        <a href={selectedRecipient.website.startsWith('http') ? selectedRecipient.website : `https://${selectedRecipient.website}`} target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline text-[11px] truncate block font-medium">
+                          {selectedRecipient.website}
+                        </a>
+                      ) : (
+                        <span className="font-semibold text-slate-250 text-[11px]">—</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-semibold mb-0.5">LinkedIn ID</span>
+                      <span className="font-semibold text-slate-250 text-[11px] truncate block">{selectedRecipient.linkedin_id || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-semibold mb-0.5">Industry</span>
+                      <span className="font-semibold text-slate-250 text-[11px] truncate block">{selectedRecipient.industry || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-semibold mb-0.5">Region/State</span>
+                      <span className="font-semibold text-slate-250 text-[11px] truncate block">{selectedRecipient.region || selectedRecipient.state || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-semibold mb-0.5">Scheduled Send</span>
+                      <span className="font-semibold text-amber-400 text-[11px] truncate block font-mono">
+                        {selectedRecipient.send_at ? new Date(selectedRecipient.send_at).toLocaleString('en-US', {
+                          timeZone: 'Asia/Kolkata',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          timeZoneName: 'short'
+                        }) : 'Pending launch'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button 
+                onClick={() => {
+                  setPreviewMsg(null);
+                  setSelectedRecipient(null);
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition"
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Sub-panel: Analytics (Enhanced with DNC response breakdown) ──────────────
+const AnalyticsPanel: React.FC<{ campaign: Campaign }> = ({ campaign }) => {
+  const [list, setList] = useState<Recipient[]>([]);
+  const [detail, setDetail] = useState<AnalyticsDetail | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/data/recipients/by-campaign/${campaign.id}`)
+      .then(r => r.json()).then(setList);
+
+    // Fetch detailed analytics with response breakdown
+    const token = localStorage.getItem('access_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    fetch(`${API_BASE_URL}/campaigns/${campaign.id}/analytics-detail`, { headers })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setDetail(d); })
+      .catch(() => {});
+  }, [campaign.id]);
+
+  const total   = list.length;
+  const sent    = list.filter(r => r.status === 'sent').length;
+  const pending = list.filter(r => r.status === 'pending').length;
+  const bounced = list.filter(r => r.status === 'bounced').length;
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE_URL}/dnc/export/${campaign.id}`, { headers });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `DNC_Responses_${campaign.name.replace(/\s+/g, '_')}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      console.error('Export failed:', e);
+    }
+    setExporting(false);
+  };
+
+  // Basic stats
+  const basicStats = [
+    { label: 'Total Recipients', value: total, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
+    { label: 'Emails Sent (Total)', value: sent,  color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+    { label: 'Sent Today',        value: detail ? detail.total_sent_today : 0, color: 'text-sky-400', bg: 'bg-sky-500/10' },
+    { label: 'Pending / Queued', value: pending,color:'text-amber-400', bg: 'bg-amber-500/10' },
+    { label: 'Bounced',          value: bounced,color:'text-red-400', bg: 'bg-red-500/10' },
+    { label: 'Delivery Rate',    value: total ? `${Math.round((sent/total)*100)}%` : '—', color:'text-purple-400', bg: 'bg-purple-500/10' },
+  ];
+
+  // Response category stats from detail endpoint
+  const responseStats = detail ? [
+    { label: 'Leads',    value: detail.leads,              icon: '🟢', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+    { label: 'Hot',      value: detail.hot,                icon: '🔥', color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' },
+    { label: 'Cold',     value: detail.cold,               icon: '❄️', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
+    { label: 'Negative', value: detail.negative,           icon: '👎', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
+    { label: 'Bounce',   value: detail.bounce_classified,  icon: '🚫', color: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-200' },
+  ] : [];
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Basic Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        {basicStats.map(s => (
+          <div key={s.label} className={`${s.bg} rounded-xl p-4 text-center`}>
+            <p className={`text-3xl font-black ${s.color}`}>{s.value}</p>
+            <p className="text-xs text-slate-500 mt-1">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Follow-up Pool Stats */}
+      {detail && (
+        <div className="bg-slate-900/10 border border-slate-700/10 rounded-2xl p-4 space-y-2">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">🔄 Follow-up Pool Metrics</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white p-3 rounded-xl border border-slate-150">
+              <span className="text-[10px] text-slate-400 block font-bold uppercase">Total Follow-ups Sent</span>
+              <span className="text-2xl font-black text-slate-700">{detail.total_followups_sent}</span>
+            </div>
+            <div className="bg-white p-3 rounded-xl border border-slate-150">
+              <span className="text-[10px] text-slate-400 block font-bold uppercase">Pending in Queue</span>
+              <span className="text-2xl font-black text-slate-700">{detail.total_followups_pending}</span>
+            </div>
+            <div className="bg-white p-3 rounded-xl border border-slate-150">
+              <span className="text-[10px] text-slate-400 block font-bold uppercase">Daily Limit Constraint</span>
+              <span className="text-2xl font-black text-slate-700">{campaign.daily_followup_limit ?? 200} / day</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Response Classification Breakdown */}
+      {detail && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider">Response Classification</h3>
+              {detail.total_responded > 0 && (
+                <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">
+                  {detail.total_responded} classified
+                </span>
+              )}
+            </div>
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-all disabled:opacity-50"
+            >
+              {exporting ? (
+                <>
+                  <span className="w-3 h-3 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                <>📥 Export Excel</>
+              )}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {responseStats.map(s => (
+              <div key={s.label} className={`${s.bg} ${s.border} border rounded-xl p-4 text-center transition-transform hover:scale-105`}>
+                <span className="text-xl block mb-1">{s.icon}</span>
+                <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+                <p className="text-[11px] text-gray-500 mt-1 font-medium">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Summary bar */}
+          {detail.total_responded > 0 && (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-between">
+              <div className="flex items-center gap-4 text-xs text-gray-600">
+                <span><strong>Response Rate:</strong> {detail.response_rate}%</span>
+                <span><strong>Delivery Rate:</strong> {detail.delivery_rate}%</span>
+              </div>
+              <span className="text-[11px] text-gray-400">
+                {detail.total_responded} of {detail.total_sent} sent emails classified
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export { InboxPanel, ResponsesPanel, RecipientsPanel, AnalyticsPanel };
 export type { Recipient };
+
+

@@ -157,15 +157,56 @@ const DataIntegrationPanel: React.FC<DataIntegrationPanelProps> = ({ campaignId,
             To ensure high deliverability and precise AI personalization, your Excel sheet must contain exactly the 13 required column headers listed below. Alternative email, state, and LinkedIn links will be automatically verified.
           </p>
         </div>
-        <button
-          onClick={handleDownloadTemplate}
-          className="px-4 py-2.5 bg-white hover:bg-slate-50 text-[#51A2C3] hover:text-[#3F93B5] font-semibold text-xs rounded-xl border border-slate-200 shadow-sm transition-all flex items-center gap-2 shrink-0"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M7 10l5 5m0 0l5-5m-5 5V3" />
-          </svg>
-          Download Template
-        </button>
+        <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0">
+          <button 
+            onClick={async () => {
+              const token = localStorage.getItem('access_token');
+              const headers: Record<string, string> = {};
+              if (token) headers['Authorization'] = `Bearer ${token}`;
+              fetch(`${API_BASE_URL}/campaigns/${campaignId}/bounces/download`, { headers })
+                .then(r => {
+                   if(!r.ok) throw new Error("Failed to download");
+                   return r.blob();
+                })
+                .then(blob => {
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `bounces_${campaignId}.csv`;
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                })
+                .catch(e => alert(e.message));
+            }}
+            className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-500 hover:text-slate-700 font-semibold text-xs rounded-xl border border-slate-200 shadow-sm transition-all flex items-center gap-2"
+          >
+            📥 Download Bounces
+          </button>
+          <button 
+            onClick={async () => {
+              if(confirm('Are you sure you want to delete all bounced recipients from this campaign?')) {
+                 const token = localStorage.getItem('access_token');
+                 await fetch(`${API_BASE_URL}/campaigns/${campaignId}/bounces`, { 
+                   method: 'DELETE', 
+                   headers: token ? {'Authorization': `Bearer ${token}`} : {}
+                 });
+                 if (onRefresh) onRefresh();
+              }
+            }} 
+            className="px-4 py-2.5 bg-white hover:bg-red-50 text-red-500 hover:text-red-700 font-semibold text-xs rounded-xl border border-slate-200 shadow-sm transition-all flex items-center gap-2"
+          >
+            🗑️ Delete Bounces
+          </button>
+          <button
+            onClick={handleDownloadTemplate}
+            className="px-4 py-2.5 bg-white hover:bg-slate-50 text-[#51A2C3] hover:text-[#3F93B5] font-semibold text-xs rounded-xl border border-slate-200 shadow-sm transition-all flex items-center gap-2 shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M7 10l5 5m0 0l5-5m-5 5V3" />
+            </svg>
+            Download Template
+          </button>
+        </div>
       </div>
 
       {/* Visual Schema Data Preview */}
