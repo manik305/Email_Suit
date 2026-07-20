@@ -76,8 +76,8 @@ def calculate_next_send_at(current_send_at_str: Optional[str], schedule: str, tz
     return target_time.astimezone(timezone.utc).isoformat()
 
 
-def calculate_next_follow_up(campaign, days: int = 1) -> datetime:
-    """Calculate the next follow-up datetime matching the campaign's target timezone and time of day."""
+def calculate_next_follow_up(campaign: 'Campaign', days: int = 3) -> datetime:
+    """Calculate the next follow-up datetime matching the campaign's target timezone and time of day (min gap 3 business days)."""
     now = datetime.now(timezone.utc)
     tz_name = campaign.timezone or "America/New_York"
     try:
@@ -117,7 +117,11 @@ def calculate_next_follow_up(campaign, days: int = 1) -> datetime:
         second=target_second,
         microsecond=0
     )
-    return next_follow_up_local.astimezone(timezone.utc)
+    result_utc = next_follow_up_local.astimezone(timezone.utc)
+    # Guarantee result is at least 20 hours in the future to prevent same-day resending
+    if result_utc <= now + timedelta(hours=20):
+        result_utc += timedelta(days=1)
+    return result_utc
 
 
 def _add_business_days(start_date: datetime, days: int) -> datetime:
@@ -623,6 +627,17 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
         fresh_recipients = []
         for r in all_recipients:
             if r.status == "pending":
+                if r.last_sent_at:
+                    l_sent = r.last_sent_at
+                    if isinstance(l_sent, str):
+                        try:
+                            l_sent = datetime.fromisoformat(l_sent.replace("Z", "+00:00"))
+                        except Exception:
+                            l_sent = None
+                    if l_sent and l_sent.tzinfo is None:
+                        l_sent = l_sent.replace(tzinfo=timezone.utc)
+                    if l_sent and (now - l_sent).total_seconds() < 20 * 3600:
+                        continue
                 if r.send_at:
                     ref = r.send_at
                     if isinstance(ref, str):
@@ -644,11 +659,28 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
         due_follow_ups = []
         for r in all_recipients:
             if r.status == "sent" and r.next_follow_up_at:
+                if r.last_sent_at:
+                    l_sent = r.last_sent_at
+                    if isinstance(l_sent, str):
+                        try:
+                            l_sent = datetime.fromisoformat(l_sent.replace("Z", "+00:00"))
+                        except Exception:
+                            l_sent = None
+                    if l_sent and l_sent.tzinfo is None:
+                        l_sent = l_sent.replace(tzinfo=timezone.utc)
+                    if l_sent and (now - l_sent).total_seconds() < 20 * 3600:
+                        continue
                 ref = r.next_follow_up_at
-                if ref.tzinfo is None:
-                    ref = ref.replace(tzinfo=timezone.utc)
-                if ref <= now:
-                    due_follow_ups.append(r)
+                if isinstance(ref, str):
+                    try:
+                        ref = datetime.fromisoformat(ref.replace("Z", "+00:00"))
+                    except Exception:
+                        ref = None
+                if ref:
+                    if ref.tzinfo is None:
+                        ref = ref.replace(tzinfo=timezone.utc)
+                    if ref <= now:
+                        due_follow_ups.append(r)
 
         # Group overdue follow-ups by YYYY-MM-DD of original send_at date in campaign timezone
         # and process them up to the daily_followup_limit (oldest batches first).
@@ -1024,7 +1056,7 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         await campaign.update({"$set": {"consecutive_failures": 0, "diagnostic_error": None}})
 
                         if not is_follow_up:
-                            next_time = calculate_next_follow_up(campaign, 1)
+                            next_time = calculate_next_follow_up(campaign, 3)
                             await r.update({
                                 "$set": {
                                     "status": "sent",
@@ -1049,7 +1081,7 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                                     }
                                 })
                             else:
-                                next_time = calculate_next_follow_up(campaign, 1)
+                                next_time = calculate_next_follow_up(campaign, 3)
                                 await r.update({
                                     "$set": {
                                         "follow_up_count": next_count,
@@ -1068,7 +1100,7 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                                 async with db_pool.acquire() as conn:
                                     now_utc = datetime.now(timezone.utc)
                                     if not is_follow_up:
-                                        next_time = calculate_next_follow_up(campaign, 1)
+                                        next_time = calculate_next_follow_up(campaign, 3)
                                         await conn.execute(
                                             "UPDATE public.recipients SET status = 'sent', follow_up_count = 0, max_follow_ups = $1, next_follow_up_at = $2, send_at = $3, last_sent_at = $3, last_message_id = $4 WHERE id = $5::uuid",
                                             max_fu, next_time, now_utc, msg_id, str(r.id)
@@ -1080,7 +1112,7 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                                                 next_count, now_utc, msg_id, now_utc + timedelta(days=45), str(r.id)
                                             )
                                         else:
-                                            next_time = calculate_next_follow_up(campaign, 1)
+                                            next_time = calculate_next_follow_up(campaign, 3)
                                             await conn.execute(
                                                 "UPDATE public.recipients SET follow_up_count = $1, next_follow_up_at = $2, last_sent_at = $3, last_message_id = $4 WHERE id = $5::uuid",
                                                 next_count, next_time, now_utc, msg_id, str(r.id)
