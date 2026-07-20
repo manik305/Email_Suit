@@ -1061,14 +1061,32 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         sent += 1
                     except Exception as db_exc:
                         logger.error("Failed to update DB after successful send to %s: %s", r.email, db_exc)
-                        # Minimal fallback to prevent resending
+                        # Bulletproof fallback using direct asyncpg query to ensure status & next_follow_up_at are saved
                         try:
-                            if not is_follow_up:
-                                await r.update({"$set": {"status": "sent", "last_message_id": msg_id}})
-                            else:
-                                await r.update({"$set": {"follow_up_count": next_count, "last_message_id": msg_id}})
-                        except Exception:
-                            pass
+                            from .database import db_pool
+                            if db_pool:
+                                async with db_pool.acquire() as conn:
+                                    now_utc = datetime.now(timezone.utc)
+                                    if not is_follow_up:
+                                        next_time = calculate_next_follow_up(campaign, 1)
+                                        await conn.execute(
+                                            "UPDATE public.recipients SET status = 'sent', follow_up_count = 0, max_follow_ups = $1, next_follow_up_at = $2, send_at = $3, last_sent_at = $3, last_message_id = $4 WHERE id = $5::uuid",
+                                            max_fu, next_time, now_utc, msg_id, str(r.id)
+                                        )
+                                    else:
+                                        if next_count >= r.max_follow_ups:
+                                            await conn.execute(
+                                                "UPDATE public.recipients SET status = 'no_response', follow_up_count = $1, next_follow_up_at = NULL, last_sent_at = $2, last_message_id = $3, cooling_off_until = $4 WHERE id = $5::uuid",
+                                                next_count, now_utc, msg_id, now_utc + timedelta(days=45), str(r.id)
+                                            )
+                                        else:
+                                            next_time = calculate_next_follow_up(campaign, 1)
+                                            await conn.execute(
+                                                "UPDATE public.recipients SET follow_up_count = $1, next_follow_up_at = $2, last_sent_at = $3, last_message_id = $4 WHERE id = $5::uuid",
+                                                next_count, next_time, now_utc, msg_id, str(r.id)
+                                            )
+                        except Exception as direct_sql_exc:
+                            logger.critical("Critical error: Emergency raw SQL update failed for %s: %s", r.email, direct_sql_exc)
                         sent += 1
 
                 # Sleep between sends (unless last item)
