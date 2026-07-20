@@ -618,7 +618,25 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
         all_recipients = await Recipient.find(campaign_id=str(campaign.id)).to_list()
 
         # Filter fresh recipients (status == 'pending')
-        fresh_recipients = [r for r in all_recipients if r.status == "pending"]
+        # Only include pending recipients whose send_at is null or in the past (to respect retry delays)
+        now = datetime.now(timezone.utc)
+        fresh_recipients = []
+        for r in all_recipients:
+            if r.status == "pending":
+                if r.send_at:
+                    ref = r.send_at
+                    if isinstance(ref, str):
+                        try:
+                            ref = datetime.fromisoformat(ref.replace("Z", "+00:00"))
+                        except ValueError:
+                            ref = now
+                    if ref.tzinfo is None:
+                        ref = ref.replace(tzinfo=timezone.utc)
+                    if ref <= now:
+                        fresh_recipients.append(r)
+                else:
+                    fresh_recipients.append(r)
+
         fresh_recipients = fresh_recipients[:fresh_limit]
 
         # Filter active follow-ups due for the day
@@ -921,6 +939,8 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                     html_body = None
                     plain_body = body
 
+                msg_id = None
+                send_success = False
                 try:
                     target_email = r.email.strip(" \t\n\r,;\"'")
                     in_reply_to_header = None
@@ -931,7 +951,7 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
 
                     msg_id = await asyncio.to_thread(
                         session.send_message,
-                        r.email.strip(" \t\n\r,;\"'"),
+                        target_email,
                         subject,
                         plain_body,
                         html_body,
@@ -939,50 +959,7 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         in_reply_to_header,
                         references_header,
                     )
-
-                    # Increment the daily quota counter for the account that just sent
-                    await quota.increment(1)
-
-                    # Reset consecutive failure counter on success
-                    await campaign.update({"$set": {"consecutive_failures": 0, "diagnostic_error": None}})
-
-                    if not is_follow_up:
-                        next_time = calculate_next_follow_up(campaign, 1)
-                        await r.update({
-                            "$set": {
-                                "status": "sent",
-                                "max_follow_ups": max_fu,
-                                "follow_up_count": 0,
-                                "next_follow_up_at": next_time,
-                                "send_at": datetime.now(timezone.utc),
-                                "last_sent_at": datetime.now(timezone.utc),
-                                "last_message_id": msg_id
-                            }
-                        })
-
-                    else:
-                        if next_count >= r.max_follow_ups:
-                            await r.update({
-                                "$set": {
-                                    "status": "no_response",
-                                    "follow_up_count": next_count,
-                                    "next_follow_up_at": None,
-                                    "last_sent_at": datetime.now(timezone.utc),
-                                    "last_message_id": msg_id,
-                                    "cooling_off_until": datetime.now(timezone.utc) + timedelta(days=45)
-                                }
-                            })
-                        else:
-                            next_time = calculate_next_follow_up(campaign, 1)
-                            await r.update({
-                                "$set": {
-                                    "follow_up_count": next_count,
-                                    "next_follow_up_at": next_time,
-                                    "last_sent_at": datetime.now(timezone.utc),
-                                    "last_message_id": msg_id
-                                }
-                            })
-                    sent += 1
+                    send_success = True
                 except smtplib.SMTPRecipientsRefused as exc:
                     logger.error("Recipient %s refused (Bounce): %s", r.email, exc)
                     errors.append({"email": r.email, "error": f"Recipient refused: {exc}"})
@@ -1013,7 +990,23 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         retry_time = datetime.now(timezone.utc) + timedelta(hours=1)
                         update_doc = {"next_follow_up_at": retry_time} if is_follow_up else {"send_at": retry_time}
                         await r.update({"$set": update_doc})
-                    failed += 1
+                        failed += 1
+                        
+                        # Spam Block protection
+                        if is_block_or_auth_error(exc):
+                            campaign_db = await Campaign.get(campaign.id)
+                            new_failures = (campaign_db.consecutive_failures or 0) + 1
+                            await campaign_db.update({"$set": {"consecutive_failures": new_failures}})
+
+                            if new_failures >= 3:
+                                diag_err = f"Spam block or authentication failure: {str(exc)}"
+                                logger.error("🚨 Consecutive failure threshold reached. Pausing campaign %s. Error: %s", campaign_db.name, diag_err)
+                                await campaign_db.update({"$set": {
+                                    "status": "paused",
+                                    "diagnostic_error": diag_err
+                                }})
+                                await update_recipient_send_times(campaign_db.id)
+                                break  # Pause sending immediately
                 except Exception as exc:
                     logger.error("Transient failure sending to %s: %s", r.email, exc)
                     errors.append({"email": r.email, "error": str(exc)})
@@ -1021,22 +1014,62 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                     update_doc = {"next_follow_up_at": retry_time} if is_follow_up else {"send_at": retry_time}
                     await r.update({"$set": update_doc})
                     failed += 1
+                    
+                if send_success:
+                    try:
+                        # Increment the daily quota counter for the account that just sent
+                        await quota.increment(1)
 
-                    # Spam Block protection
-                    if is_block_or_auth_error(exc):
-                        campaign = await Campaign.get(campaign.id)
-                        new_failures = (campaign.consecutive_failures or 0) + 1
-                        await campaign.update({"$set": {"consecutive_failures": new_failures}})
+                        # Reset consecutive failure counter on success
+                        await campaign.update({"$set": {"consecutive_failures": 0, "diagnostic_error": None}})
 
-                        if new_failures >= 3:
-                            diag_err = f"Spam block or authentication failure: {str(exc)}"
-                            logger.error("🚨 Consecutive failure threshold reached. Pausing campaign %s. Error: %s", campaign.name, diag_err)
-                            await campaign.update({"$set": {
-                                "status": "paused",
-                                "diagnostic_error": diag_err
-                            }})
-                            await update_recipient_send_times(campaign.id)
-                            break  # Pause sending immediately
+                        if not is_follow_up:
+                            next_time = calculate_next_follow_up(campaign, 1)
+                            await r.update({
+                                "$set": {
+                                    "status": "sent",
+                                    "max_follow_ups": max_fu,
+                                    "follow_up_count": 0,
+                                    "next_follow_up_at": next_time,
+                                    "send_at": datetime.now(timezone.utc),
+                                    "last_sent_at": datetime.now(timezone.utc),
+                                    "last_message_id": msg_id
+                                }
+                            })
+                        else:
+                            if next_count >= r.max_follow_ups:
+                                await r.update({
+                                    "$set": {
+                                        "status": "no_response",
+                                        "follow_up_count": next_count,
+                                        "next_follow_up_at": None,
+                                        "last_sent_at": datetime.now(timezone.utc),
+                                        "last_message_id": msg_id,
+                                        "cooling_off_until": datetime.now(timezone.utc) + timedelta(days=45)
+                                    }
+                                })
+                            else:
+                                next_time = calculate_next_follow_up(campaign, 1)
+                                await r.update({
+                                    "$set": {
+                                        "follow_up_count": next_count,
+                                        "next_follow_up_at": next_time,
+                                        "last_sent_at": datetime.now(timezone.utc),
+                                        "last_message_id": msg_id
+                                    }
+                                })
+                        sent += 1
+                    except Exception as db_exc:
+                        logger.error("Failed to update DB after successful send to %s: %s", r.email, db_exc)
+                        # Minimal fallback to prevent resending
+                        try:
+                            if not is_follow_up:
+                                await r.update({"$set": {"status": "sent", "last_message_id": msg_id}})
+                            else:
+                                await r.update({"$set": {"follow_up_count": next_count, "last_message_id": msg_id}})
+                        except Exception:
+                            pass
+                        sent += 1
 
                 # Sleep between sends (unless last item)
                 if idx < len(combined_recipients) - 1:
