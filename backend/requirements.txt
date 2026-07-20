@@ -12,9 +12,6 @@ boto3
 python-dotenv
 openai
 httpx
-pytest
-pytest-asyncio
-pytest-cov
 beautifulsoup4
 asyncpg
 bcrypt
