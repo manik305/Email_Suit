@@ -176,6 +176,7 @@ class CampaignUpdate(BaseModel):
     daily_fresh_limit: Optional[int] = None
     daily_followup_limit: Optional[int] = None
     max_contacts_per_company: Optional[int] = None
+    timezone: Optional[str] = None
     consecutive_failures: Optional[int] = None
     diagnostic_error: Optional[str] = None
     email_config_pool: Optional[List[str]] = None

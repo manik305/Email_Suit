@@ -893,6 +893,14 @@ const CampaignsPage: React.FC = () => {
                           )}
                           <span>{c.target_segment} · {c.schedule}</span>
                         </p>
+                        {c.email_config_id && (
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Linked Mail:</span>
+                            <span className="text-[10px] font-bold text-[#4BA7C9] bg-[#4BA7C9]/10 px-1.5 py-0.5 rounded truncate">
+                              {state.emailConfigs?.find(config => config.id === c.email_config_id)?.sender_address || c.email_config_id}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Stats counters */}
@@ -1121,7 +1129,12 @@ const CampaignsPage: React.FC = () => {
                     <span className="text-[10px] font-bold uppercase tracking-wider block mb-1">Step 1: SMTP Mailer</span>
                     <p className="text-xs leading-relaxed">
                       {selected?.email_config_id 
-                        ? '✅ SMTP sending account is linked and ready.' 
+                        ? (
+                           <>
+                             ✅ Sending account linked:<br/>
+                             <strong className="text-emerald-700">{state.emailConfigs?.find(config => config.id === selected.email_config_id)?.sender_address || selected.email_config_id}</strong>
+                           </>
+                          )
                         : 'Link a mailer account (Gmail, MS 365, etc.) to handle SMTP relay dispatch.'}
                     </p>
                   </div>
