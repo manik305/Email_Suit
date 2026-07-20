@@ -633,7 +633,7 @@ class PostgresModel(BaseModel):
             else:
                 if k.endswith("_id") and v == "":
                     v = None
-                if k in ("send_at", "next_follow_up_at", "last_sent_at", "created_at", "otp_expires_at") and isinstance(v, str) and v:
+                if k in ("send_at", "next_follow_up_at", "last_sent_at", "created_at", "otp_expires_at", "cooling_off_until") and isinstance(v, str) and v:
                     try:
                         v = datetime.fromisoformat(v.replace("Z", "+00:00"))
                     except ValueError:
