@@ -17,8 +17,10 @@ import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query, UploadFile, File, Depends
+from fastapi.responses import StreamingResponse
 import pandas as pd
 import io
+import csv
 
 from .. import models, schemas
 from ..email_service import fetch_inbox, send_email
@@ -392,6 +394,32 @@ async def send_campaign(
     return res
 
 
+@router.delete("/{campaign_id}/bounces")
+async def delete_bounces(campaign_id: str, current_user_email: str = Depends(get_current_user_email)):
+    campaign = await _assert_campaign_access(campaign_id, current_user_email)
+    bounced = await models.Recipient.find(campaign_id=campaign_id, status="bounced").to_list()
+    # Delete from DB
+    await models.Recipient.find(campaign_id=campaign_id, status="bounced").delete()
+    return {"status": "success", "deleted_count": len(bounced)}
+
+@router.get("/{campaign_id}/bounces/download")
+async def download_bounces(campaign_id: str, current_user_email: str = Depends(get_current_user_email)):
+    campaign = await _assert_campaign_access(campaign_id, current_user_email)
+    bounced = await models.Recipient.find(campaign_id=campaign_id, status="bounced").to_list()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Email", "Name", "Company", "Status", "Response Category", "Error Details"])
+    for r in bounced:
+        writer.writerow([r.email, r.name, r.company_name, r.status, r.response_category, r.response_text])
+    
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=bounces_{campaign_id}.csv"}
+    )
+
 # ─── Neo4j Graph Data ─────────────────────────────────────────────────────────
 
 @router.get("/{campaign_id}/graph")
@@ -550,7 +578,7 @@ async def get_campaign_inbox(
         bounced_recipients = await models.Recipient.find(
             campaign_id=campaign_id,
             status="bounced"
-        ).to_list()
+        ).sort("-created_at").limit(limit).to_list()
         
         for r in bounced_recipients:
             date_str = r.created_at.strftime("%a, %d %b %Y %H:%M:%S UTC")

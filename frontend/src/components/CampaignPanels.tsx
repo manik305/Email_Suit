@@ -399,9 +399,50 @@ const InboxPanel: React.FC<{ campaignId: string; projectId?: string }> = ({ camp
           </svg>
           <span className="text-xs font-bold text-gray-700">{msgs.length} message{msgs.length !== 1 ? 's' : ''}</span>
         </div>
-        <button onClick={fetchInbox} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-semibold transition-colors">
-          🔄 Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={async () => {
+              const token = localStorage.getItem('access_token');
+              const headers: Record<string, string> = {};
+              if (token) headers['Authorization'] = `Bearer ${token}`;
+              fetch(`${API_BASE_URL}/campaigns/${campaignId}/bounces/download`, { headers })
+                .then(r => {
+                   if(!r.ok) throw new Error("Failed to download");
+                   return r.blob();
+                })
+                .then(blob => {
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `bounces_${campaignId}.csv`;
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                })
+                .catch(e => alert(e.message));
+            }}
+            className="text-[11px] text-gray-500 hover:text-gray-700 font-semibold transition-colors flex items-center gap-1"
+          >
+            📥 Download Bounces
+          </button>
+          <button 
+            onClick={async () => {
+              if(confirm('Are you sure you want to delete all bounced recipients from this campaign?')) {
+                 const token = localStorage.getItem('access_token');
+                 await fetch(`${API_BASE_URL}/campaigns/${campaignId}/bounces`, { 
+                   method: 'DELETE', 
+                   headers: token ? {'Authorization': `Bearer ${token}`} : {}
+                 });
+                 fetchInbox();
+              }
+            }} 
+            className="text-[11px] text-red-500 hover:text-red-700 font-semibold transition-colors flex items-center gap-1 mx-2"
+          >
+            🗑️ Delete Bounces
+          </button>
+          <button onClick={fetchInbox} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-semibold transition-colors">
+            🔄 Refresh
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
