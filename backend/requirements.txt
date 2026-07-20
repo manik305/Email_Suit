@@ -15,10 +15,7 @@ httpx
 pytest
 pytest-asyncio
 pytest-cov
-python-multipart
-aiomail  # for async email if needed, or stick to smtplib/imaplib
 beautifulsoup4
-playwright
 asyncpg
 bcrypt
 apscheduler
@@ -26,3 +23,4 @@ email-validator
 dnspython
 python-docx
 neo4j
+
