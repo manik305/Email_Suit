@@ -1315,3 +1315,43 @@ def stop_scheduler() -> None:
     if _scheduler and _scheduler.running:
         _scheduler.shutdown(wait=False)
         logger.info("Campaign scheduler stopped")
+
+
+async def check_imap_inbox_for_updates(campaign: Campaign) -> None:
+    """Fetch recent IMAP messages and process any replies or bounces."""
+    if not campaign or not campaign.email_config_id:
+        return
+    cfg = await EmailConfig.get(campaign.email_config_id)
+    if not cfg or not cfg.imap:
+        return
+    try:
+        from .email_service import fetch_inbox
+        messages = await fetch_inbox(cfg, limit=30)
+        for msg in messages:
+            if not msg.from_addr:
+                continue
+            sender = msg.from_addr
+            if "<" in sender and ">" in sender:
+                sender = sender.split("<")[1].split(">")[0].strip()
+            sender = sender.strip().lower()
+            
+            if db_pool:
+                async with db_pool.acquire() as conn:
+                    rec = await conn.fetchrow(
+                        "SELECT id, status, response_category FROM public.recipients WHERE campaign_id = $1::uuid AND LOWER(email) = $2 LIMIT 1",
+                        str(campaign.id), sender
+                    )
+                    if rec and rec["status"] in ("sent", "pending"):
+                        subj_lower = msg.subject.lower()
+                        if "delivery status" in subj_lower or "undelivered" in subj_lower or "failure" in subj_lower:
+                            await conn.execute(
+                                "UPDATE public.recipients SET status = 'bounced', response_category = 'bounce', next_follow_up_at = NULL WHERE id = $1::uuid",
+                                rec["id"]
+                            )
+                        elif not rec["response_category"]:
+                            await conn.execute(
+                                "UPDATE public.recipients SET status = 'replied', response_text = $1, next_follow_up_at = NULL WHERE id = $2::uuid",
+                                msg.snippet[:500] if msg.snippet else msg.subject, rec["id"]
+                            )
+    except Exception as exc:
+        logger.warning("check_imap_inbox_for_updates error for campaign %s: %s", campaign.id, exc)

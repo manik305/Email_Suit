@@ -303,9 +303,25 @@ def _fetch_inbox_sync(config: EmailConfig, mailbox: str = "INBOX", limit: int = 
             raw = msg_data[0][1]
             parsed = stdlib_email.message_from_bytes(raw)
 
-            subject = parsed.get("Subject", "(no subject)")
-            from_addr = parsed.get("From", "")
-            date_str = parsed.get("Date", "")
+            from email.header import decode_header
+            def _decode_header_str(val):
+                if not val:
+                    return ""
+                try:
+                    parts = decode_header(str(val))
+                    decoded = []
+                    for content, encoding in parts:
+                        if isinstance(content, bytes):
+                            decoded.append(content.decode(encoding or "utf-8", errors="replace"))
+                        else:
+                            decoded.append(str(content))
+                    return "".join(decoded)
+                except Exception:
+                    return str(val)
+
+            subject = _decode_header_str(parsed.get("Subject")) or "(no subject)"
+            from_addr = _decode_header_str(parsed.get("From")) or ""
+            date_str = _decode_header_str(parsed.get("Date")) or ""
 
             # Extract plain-text snippet and full body
             full_body = ""
