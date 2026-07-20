@@ -850,6 +850,22 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
 
   return (
     <div className="overflow-x-auto space-y-4">
+      {/* Transparent Schedule & Safety Rules Banner */}
+      <div className="p-3.5 bg-indigo-50/80 border border-indigo-200/60 rounded-xl flex items-start gap-3 text-xs text-indigo-950 shadow-sm">
+        <span className="text-lg">🛡️</span>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <h4 className="font-bold text-indigo-950 uppercase tracking-wider text-[11px]">Transparent Follow-up Timeline & Reputation Safeguards Active</h4>
+            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold text-[9px] uppercase rounded-full">Guaranteed 0 Same-Day Resends</span>
+          </div>
+          <p className="text-[11px] text-indigo-800 leading-relaxed">
+            • <strong>Strict 20-Hour Minimum Gap:</strong> Enforced by system. No prospect can ever receive 2 emails on the same day.<br/>
+            • <strong>3 Business Days Spacing:</strong> Each follow-up step is automatically spaced out by 3 business days (~3–5 calendar days).<br/>
+            • <strong>21-25 Day Lifecycle & No Response Transition:</strong> Once all follow-up steps complete without reply, the prospect automatically moves to <strong>no_response</strong> and enters a 45-day cooling off period.
+          </p>
+        </div>
+      </div>
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-2 border-b border-slate-100 gap-3">
         <div>
           <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Prospects List</h3>
