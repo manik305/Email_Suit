@@ -53,7 +53,7 @@ async def classify_response(
     2. Updates matching recipient(s) in the campaign with response_category
     3. Cancels any pending follow-ups for that recipient
     """
-    valid_reasons = {"lead", "hot", "cold", "negative", "bounce"}
+    valid_reasons = {"lead", "hot", "cold", "negative", "bounce", "ooo", "automatic", "not_bounce"}
     if payload.reason not in valid_reasons:
         raise HTTPException(
             status_code=400,

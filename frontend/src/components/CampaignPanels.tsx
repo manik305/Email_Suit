@@ -805,6 +805,47 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
     setLoadingPreview(false);
   };
 
+  const handleRemoveBounces = async () => {
+    if (!confirm('Are you sure you want to remove all bounces for this campaign? This cannot be undone.')) return;
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${API_BASE_URL}/campaigns/${campaignId}/bounces`, {
+        method: 'DELETE',
+        headers
+      });
+      if (res.ok) {
+        fetchRecipients();
+        alert('Bounces successfully removed.');
+      }
+    } catch (e) {
+      console.error('Failed to remove bounces', e);
+    }
+  };
+
+  const handleDownloadBounces = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${API_BASE_URL}/campaigns/${campaignId}/bounces/download`, { headers });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `bounces_${campaignId}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      console.error('Failed to download bounces', e);
+    }
+  };
+
   if (loading) return <p className="text-slate-500 text-sm py-8 text-center">Loading…</p>;
 
   return (
@@ -815,7 +856,9 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
           <p className="text-[10px] text-slate-400">Viewing filtered prospects for this campaign</p>
         </div>
         <div className="flex items-center gap-2">
-          <label htmlFor="recipients-filter" className="text-[10px] font-bold text-slate-400 uppercase">Filter:</label>
+          <button onClick={handleDownloadBounces} className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-xs font-bold transition">📥 Download Bounces</button>
+          <button onClick={handleRemoveBounces} className="px-2 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded text-xs font-bold transition">🗑️ Remove Bounces</button>
+          <label htmlFor="recipients-filter" className="text-[10px] font-bold text-slate-400 uppercase ml-2">Filter:</label>
           <select
             id="recipients-filter"
             value={currentFilter}
