@@ -90,7 +90,8 @@ async def init_db() -> None:
                     ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS name VARCHAR(255);
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS target_region VARCHAR(100) DEFAULT 'US' NOT NULL;
-                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_templates JSONB;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_templates TEXT[];
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_subjects TEXT[];
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS created_by VARCHAR(255);
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS mails_per_minute INTEGER DEFAULT 2;
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS daily_fresh_limit INTEGER DEFAULT 100;
@@ -590,8 +591,9 @@ class PostgresModel(BaseModel):
         idx = 1
         for k, v in data.items():
             columns.append(k)
-            # Serialize dict/list to json string for JSONB/TEXT[] columns
-            if isinstance(v, (dict, list)):
+            if k in ("follow_up_templates", "follow_up_subjects") and isinstance(v, list):
+                values.append([str(x) for x in v] if v is not None else [])
+            elif isinstance(v, (dict, list)):
                 values.append(json.dumps(v))
             else:
                 if k.endswith("_id") and v == "":
@@ -628,7 +630,9 @@ class PostgresModel(BaseModel):
         idx = 1
         for k, v in data.items():
             set_clauses.append(f"{k} = ${idx}")
-            if isinstance(v, (dict, list)):
+            if k in ("follow_up_templates", "follow_up_subjects") and isinstance(v, list):
+                values.append([str(x) for x in v] if v is not None else [])
+            elif isinstance(v, (dict, list)):
                 values.append(json.dumps(v))
             else:
                 if k.endswith("_id") and v == "":
@@ -673,7 +677,9 @@ class PostgresModel(BaseModel):
         d = dict(row)
         # Parse fields that are stored as UUID, JSON/JSONB, arrays, etc.
         for k, v in d.items():
-            if isinstance(v, (dict, list)) and k in cls.model_fields:
+            if isinstance(v, list):
+                d[k] = v
+            elif isinstance(v, (dict, list)) and k in cls.model_fields:
                 # parsed json
                 pass
             elif isinstance(v, str) and (v.startswith("{") or v.startswith("[")) and k in cls.model_fields:
