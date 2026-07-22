@@ -55,8 +55,9 @@ async def _get_config_for_campaign(campaign: models.Campaign) -> models.EmailCon
 
 def _render_body(template: str, recipient: models.Recipient) -> str:
     """Simple token substitution in email body templates."""
+    from app.scheduler import render_dynamic_date_tokens
     recipient_name = recipient.name or (f"{recipient.first_name} {recipient.last_name}" if recipient.first_name or recipient.last_name else "there")
-    return (
+    rendered = (
         template
         .replace("{{name}}", recipient_name).replace("{name}", recipient_name)
         .replace("{{first_name}}", recipient.first_name or "").replace("{first_name}", recipient.first_name or "")
@@ -69,6 +70,7 @@ def _render_body(template: str, recipient: models.Recipient) -> str:
         .replace("{{company_name}}", recipient.company_name or "").replace("{company_name}", recipient.company_name or "")
         .replace("{{company}}", recipient.company_name or "").replace("{company}", recipient.company_name or "")
     )
+    return render_dynamic_date_tokens(rendered)
 
 
 async def _assert_campaign_access(campaign_id: str, email: str) -> models.Campaign:

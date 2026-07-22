@@ -135,6 +135,43 @@ def _add_business_days(start_date: datetime, days: int) -> datetime:
     return current_date
 
 
+def render_dynamic_date_tokens(text: Optional[str], send_date: Optional[datetime] = None) -> Optional[str]:
+    """
+    Dynamically replaces date tokens like {{2_days_from_now}}, {{3_days_from_now}} etc. in email body/subject.
+    Adds N business days (skipping Saturday and Sunday) to send_date (defaults to current UTC time).
+    Format: "Friday, July 24".
+    """
+    if not text:
+        return text
+        
+    import re
+    if send_date is None:
+        send_date = datetime.now(timezone.utc)
+        
+    pattern = r'\{\{?\s*(\d+)\s*_days?_from_now\s*\}?\}'
+    
+    def replace_match(match):
+        days_str = match.group(1)
+        try:
+            days = int(days_str)
+        except ValueError:
+            return match.group(0)
+            
+        target_date = _add_business_days(send_date, days)
+        day_name = target_date.strftime("%A")
+        month_name = target_date.strftime("%B")
+        day_num = target_date.day
+        
+        if 11 <= day_num <= 13:
+            suffix = 'th'
+        else:
+            suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
+            
+        return f"{day_name}, {month_name} {day_num}{suffix}"
+
+    return re.sub(pattern, replace_match, text, flags=re.IGNORECASE)
+
+
 def get_timezone_from_state(state: Optional[str]) -> str:
     """Map a US state code to its timezone abbreviation (EST, CST, MST, PST)."""
     if not state:
@@ -894,6 +931,7 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         .replace("{{company_name}}", r.company_name or "").replace("{company_name}", r.company_name or "")
                         .replace("{{company}}", r.company_name or "").replace("{company}", r.company_name or "")
                     )
+                    subject = render_dynamic_date_tokens(subject)
                     body = (
                         body_tpl
                         .replace("{{name}}", recipient_name).replace("{name}", recipient_name)
@@ -907,12 +945,22 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         .replace("{{company_name}}", r.company_name or "").replace("{company_name}", r.company_name or "")
                         .replace("{{company}}", r.company_name or "").replace("{company}", r.company_name or "")
                     )
+                    body = render_dynamic_date_tokens(body)
                 else:
                     if latest_recipient.status != "sent":
                         logger.info("Recipient %s status is %s (expected sent), skipping duplicate follow-up.", r.email, latest_recipient.status)
                         continue
                     next_count = r.follow_up_count + 1
-                    subject_raw = f"Re: {subject_tpl}"
+                    
+                    custom_fu_subject = None
+                    if getattr(campaign, 'follow_up_subjects', None) and len(campaign.follow_up_subjects) > next_count:
+                        custom_fu_subject = campaign.follow_up_subjects[next_count]
+                    
+                    if custom_fu_subject and custom_fu_subject.strip():
+                        subject_raw = custom_fu_subject
+                    else:
+                        subject_raw = f"Re: {subject_tpl}"
+
                     subject = (
                         subject_raw
                         .replace("{{name}}", recipient_name).replace("{name}", recipient_name)
@@ -926,6 +974,8 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         .replace("{{company_name}}", r.company_name or "").replace("{company_name}", r.company_name or "")
                         .replace("{{company}}", r.company_name or "").replace("{company}", r.company_name or "")
                     )
+                    subject = render_dynamic_date_tokens(subject)
+                    
                     body = None
                     if campaign.follow_up_templates and len(campaign.follow_up_templates) > next_count:
                         body = campaign.follow_up_templates[next_count]
@@ -951,6 +1001,7 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                             .replace("{{company_name}}", r.company_name or "").replace("{company_name}", r.company_name or "")
                             .replace("{{company}}", r.company_name or "").replace("{company}", r.company_name or "")
                         )
+                    body = render_dynamic_date_tokens(body)
 
                 import re
                 has_html = bool(re.search(r'<[a-zA-Z/][^>]*>', body))

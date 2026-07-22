@@ -130,6 +130,7 @@ class CampaignBase(BaseModel):
     subject: Optional[str] = None
     body_template: Optional[str] = None
     follow_up_templates: Optional[List[str]] = None
+    follow_up_subjects: Optional[List[str]] = None
     # ISO datetime string e.g. "2026-05-20T09:00:00" for scheduled sends
     send_at: Optional[str] = None
     timezone: Optional[str] = "America/New_York"
@@ -167,6 +168,7 @@ class CampaignUpdate(BaseModel):
     subject: Optional[str] = None
     body_template: Optional[str] = None
     follow_up_templates: Optional[List[str]] = None
+    follow_up_subjects: Optional[List[str]] = None
     send_at: Optional[str] = None
     status: Optional[str] = None
     email_config_id: Optional[str] = None

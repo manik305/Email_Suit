@@ -88,10 +88,12 @@ CREATE TABLE IF NOT EXISTS public.campaigns (
     max_contacts_per_company INTEGER DEFAULT 1,
     consecutive_failures INTEGER DEFAULT 0,
     diagnostic_error TEXT,
-    email_config_pool JSONB DEFAULT '[]',
-    project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL,
+    follow_up_templates TEXT[],
+    follow_up_subjects TEXT[],
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_templates TEXT[];
+ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_subjects TEXT[];
 
 -- 4. Recipients (Main Email Processing Candidates)
 CREATE TABLE IF NOT EXISTS public.recipients (

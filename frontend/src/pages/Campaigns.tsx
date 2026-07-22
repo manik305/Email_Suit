@@ -98,6 +98,8 @@ const CampaignsPage: React.FC = () => {
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [followUpStage, setFollowUpStage] = useState(1);
   const [followUps, setFollowUps] = useState<string[]>([]);
+  const [followUpSubjects, setFollowUpSubjects] = useState<string[]>([]);
+  const [followUpCadences, setFollowUpCadences] = useState<number[]>([3, 3, 3, 3, 3, 3, 3, 3, 3, 3]);
   const [selectedId, setSelectedId]   = useState<string|null>(null);
 
   const [initialSubject, setInitialSubject] = useState('');
@@ -114,6 +116,45 @@ const CampaignsPage: React.FC = () => {
   const [submitting, setSubmitting]     = useState(false);
   const [tzRegion, setTzRegion]         = useState('US & Canada');
   const [tzSearch, setTzSearch]         = useState('');
+
+  const calculateBusinessDaysTargetDate = (days: number, fromDate?: Date) => {
+    const current = fromDate ? new Date(fromDate) : new Date();
+    let added = 0;
+    while (added < days) {
+      current.setDate(current.getDate() + 1);
+      if (current.getDay() !== 0 && current.getDay() !== 6) {
+        added++;
+      }
+    }
+    return current.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const formatDynamicDateTokens = (text: string, sendDate?: Date) => {
+    if (!text) return text;
+    const base = sendDate ? new Date(sendDate) : new Date();
+    return text.replace(/\{\{?\s*(\d+)\s*_days?_from_now\s*\}?\}/gi, (_, daysStr) => {
+      const days = parseInt(daysStr, 10);
+      if (isNaN(days)) return _;
+      let current = new Date(base);
+      let added = 0;
+      while (added < days) {
+        current.setDate(current.getDate() + 1);
+        if (current.getDay() !== 0 && current.getDay() !== 6) {
+          added++;
+        }
+      }
+      const dayName = current.toLocaleDateString('en-US', { weekday: 'long' });
+      const monthName = current.toLocaleDateString('en-US', { month: 'long' });
+      const dayNum = current.getDate();
+      let suffix = 'th';
+      if (dayNum < 11 || dayNum > 13) {
+        if (dayNum % 10 === 1) suffix = 'st';
+        else if (dayNum % 10 === 2) suffix = 'nd';
+        else if (dayNum % 10 === 3) suffix = 'rd';
+      }
+      return `${dayName}, ${monthName} ${dayNum}${suffix}`;
+    });
+  };
 
   const [form, setForm] = useState<CreateCampaignPayload & {
     tone: string; product: string; localDt: string; timezone: string;
@@ -524,10 +565,15 @@ const CampaignsPage: React.FC = () => {
     if (selected && showFollowUpModal) {
       setInitialSubject(selected.subject || '');
       setInitialBody(selected.body_template || '');
-      if (selected.follow_up_templates) {
+      if (selected.follow_up_templates && selected.follow_up_templates.length > 0) {
         setFollowUps(selected.follow_up_templates);
       } else {
-        setFollowUps([]);
+        setFollowUps(['', '']);
+      }
+      if ((selected as any).follow_up_subjects && (selected as any).follow_up_subjects.length > 0) {
+        setFollowUpSubjects((selected as any).follow_up_subjects);
+      } else {
+        setFollowUpSubjects(['', '']);
       }
     }
   }, [selected, showFollowUpModal]);
@@ -572,14 +618,15 @@ const CampaignsPage: React.FC = () => {
           subject: initialSubject,
           body_template: initialBody,
           follow_up_templates: followUps,
+          follow_up_subjects: followUpSubjects,
         }),
       });
       if (res.ok) {
-        showToast('✅ Sequence & Initial Draft updated successfully!');
+        showToast('✅ Sequence & Follow-ups updated successfully!');
         await refreshData();
         setShowFollowUpModal(false);
       } else {
-        showToast('❌ Failed to update Initial Draft.');
+        showToast('❌ Failed to update Sequence.');
       }
     } catch {
       showToast('❌ Network error saving sequence.');
@@ -698,6 +745,8 @@ const CampaignsPage: React.FC = () => {
   });
   
   const followUpsToday = Object.values(followUpBreakdown).reduce((a, b) => a + b, 0);
+  const initialSentTotal = selectedCampaignRecipients.filter(r => (r.status === 'sent' || r.status === 'replied' || r.status === 'no_response') && (!r.follow_up_count || r.follow_up_count === 0)).length;
+  const followUpsSentTotal = selectedCampaignRecipients.reduce((sum, r) => sum + (r.follow_up_count || 0), 0);
   const noResponseTotal = selectedCampaignRecipients.filter(r => r.status === 'no_response').length;
   const noResponseToday = selectedCampaignRecipients.filter(r => r.status === 'no_response' && r.last_sent_at && new Date(r.last_sent_at).toDateString() === todayStr).length;
 
@@ -1268,9 +1317,9 @@ const CampaignsPage: React.FC = () => {
                   setActivePanel('drafts');
                 }}
               >
-                <span className="text-[10px] text-slate-400 block uppercase font-medium font-bold">Initial Mails Today</span>
+                <span className="text-[10px] text-slate-400 block uppercase font-medium font-bold">Initial Mails Sent</span>
                 <span className="text-sm font-bold text-emerald-600 block mt-1">
-                  {initialToday}
+                  {initialSentTotal} <span className="text-[9px] font-normal text-slate-500">({initialToday} today)</span>
                 </span>
               </div>
 
@@ -1281,9 +1330,9 @@ const CampaignsPage: React.FC = () => {
                   setActivePanel('drafts');
                 }}
               >
-                <span className="text-[10px] text-slate-400 block uppercase font-medium font-bold">Follow-ups Today</span>
+                <span className="text-[10px] text-slate-400 block uppercase font-medium font-bold">Follow-ups Sent</span>
                 <span className="text-sm font-bold text-emerald-600 block mt-1">
-                  {followUpsToday}
+                  {followUpsSentTotal} <span className="text-[9px] font-normal text-slate-500">({followUpsToday} today)</span>
                 </span>
               </div>
 
@@ -2187,9 +2236,9 @@ const CampaignsPage: React.FC = () => {
       {/* ─── Follow-up Sequence Modal ─────────────────────────────────────────── */}
       {showFollowUpModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-xl rounded-3xl border border-slate-200 shadow-2xl p-6 overflow-y-auto max-h-[92vh]">
+          <div className="bg-white w-full max-w-2xl rounded-3xl border border-slate-200 shadow-2xl p-6 overflow-y-auto max-h-[92vh]">
             
-            <div className="flex justify-between items-center mb-6 pb-2 border-b border-slate-100">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-100">
               <div>
                 <h2 className="text-lg font-bold text-slate-800">Mail Sequence Configurator</h2>
                 <p className="text-[10px] text-slate-400 mt-0.5">Campaign: {selected?.name}</p>
@@ -2198,19 +2247,35 @@ const CampaignsPage: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-              {/* Follow-up Selector Tabs */}
-              <div className="flex gap-1 overflow-x-auto pb-2 border-b border-slate-100">
-                {[0, 1, 2, 3, 4, 5, 6].map(stage => (
+              {/* Follow-up Selector Tabs + Add/Remove buttons */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-100">
+                <button
+                  onClick={() => setFollowUpStage(0)}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    followUpStage === 0
+                      ? 'bg-[#E5DEC7] border-[#D0C7AA] text-slate-800'
+                      : 'bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  Initial Draft
+                </button>
+                {Array.from({ length: Math.max(followUps.length > 1 ? followUps.length - 1 : 1, 1) }, (_, i) => i + 1).map(stage => (
                   <button
                     key={stage}
                     onClick={() => {
                       setFollowUpStage(stage);
-                      // Initialize draft content if not present
-                      if (stage > 0 && !followUps[stage]) {
-                        const defaultBody = `Hi {name},\n\nFollowing up on my previous message regarding {company_name}.\n\nBest regards,\n[Outreach Team]`;
+                      if (!followUps[stage]) {
+                        const defaultBody = `Hi {{first_name}},\n\nFollowing up on my previous message regarding {{company}}.\n\nBest regards,\n[Outreach Team]`;
                         setFollowUps(prev => {
                           const copy = [...prev];
                           copy[stage] = defaultBody;
+                          return copy;
+                        });
+                      }
+                      if (!followUpSubjects[stage]) {
+                        setFollowUpSubjects(prev => {
+                          const copy = [...prev];
+                          copy[stage] = `Re: ${initialSubject || selected?.subject || ''}`;
                           return copy;
                         });
                       }
@@ -2221,9 +2286,42 @@ const CampaignsPage: React.FC = () => {
                         : 'bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100'
                     }`}
                   >
-                    {stage === 0 ? 'Initial Draft' : `Follow-up ${stage}`}
+                    Follow-up {stage}
                   </button>
                 ))}
+
+                {followUps.length < 11 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextStage = Math.max(followUps.length, 1);
+                      setFollowUps(prev => [...prev, `Hi {{first_name}},\n\nJust following up on my previous message regarding {{company}}.\n\nBest regards,`]);
+                      setFollowUpSubjects(prev => [...prev, `Re: ${initialSubject || selected?.subject || ''}`]);
+                      setFollowUpStage(nextStage);
+                    }}
+                    className="flex-shrink-0 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 flex items-center gap-1"
+                    title="Add another follow-up stage (up to 10)"
+                  >
+                    <span>+ Add Follow-up</span>
+                  </button>
+                )}
+
+                {followUpStage > 0 && followUps.length > 2 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Remove Follow-up ${followUpStage}?`)) {
+                        setFollowUps(prev => prev.filter((_, idx) => idx !== followUpStage));
+                        setFollowUpSubjects(prev => prev.filter((_, idx) => idx !== followUpStage));
+                        setFollowUpStage(Math.max(0, followUpStage - 1));
+                      }
+                    }}
+                    className="flex-shrink-0 px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg border border-rose-200 ml-auto"
+                    title="Delete this follow-up stage"
+                  >
+                    🗑️
+                  </button>
+                )}
               </div>
 
               {followUpStage === 0 ? (
@@ -2239,7 +2337,7 @@ const CampaignsPage: React.FC = () => {
                   <div className="space-y-1">
                     <div className="flex justify-between items-center">
                       <label htmlFor="initial-subject" className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Subject</label>
-                      <div className="flex gap-1.5">
+                      <div className="flex flex-wrap gap-1">
                         <button
                           type="button"
                           onClick={() => {
@@ -2248,15 +2346,11 @@ const CampaignsPage: React.FC = () => {
                               const start = input.selectionStart ?? 0;
                               const end = input.selectionEnd ?? 0;
                               const text = initialSubject || '';
-                              const newVal = text.substring(0, start) + "{first_name}" + text.substring(end);
+                              const newVal = text.substring(0, start) + " {{first_name}}" + text.substring(end);
                               setInitialSubject(newVal);
-                              setTimeout(() => {
-                                input.focus();
-                                input.setSelectionRange(start + 12, start + 12);
-                              }, 50);
                             }
                           }}
-                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[9px] font-bold text-slate-550 rounded border border-slate-200"
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[9px] font-bold text-slate-600 rounded border border-slate-200"
                         >
                           + First Name
                         </button>
@@ -2268,17 +2362,29 @@ const CampaignsPage: React.FC = () => {
                               const start = input.selectionStart ?? 0;
                               const end = input.selectionEnd ?? 0;
                               const text = initialSubject || '';
-                              const newVal = text.substring(0, start) + "{company_name}" + text.substring(end);
+                              const newVal = text.substring(0, start) + " {{company}}" + text.substring(end);
                               setInitialSubject(newVal);
-                              setTimeout(() => {
-                                input.focus();
-                                input.setSelectionRange(start + 14, start + 14);
-                              }, 50);
                             }
                           }}
-                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[9px] font-bold text-slate-550 rounded border border-slate-200"
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[9px] font-bold text-slate-600 rounded border border-slate-200"
                         >
-                          + Company Name
+                          + Company
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const input = document.getElementById('initial-subject') as HTMLInputElement;
+                            if (input) {
+                              const start = input.selectionStart ?? 0;
+                              const end = input.selectionEnd ?? 0;
+                              const text = initialSubject || '';
+                              const newVal = text.substring(0, start) + " {{2_days_from_now}}" + text.substring(end);
+                              setInitialSubject(newVal);
+                            }
+                          }}
+                          className="px-1.5 py-0.5 bg-[#E6EFF6] hover:bg-[#D5E4F0] text-[9px] font-bold text-[#2C5F78] rounded border border-[#51A2C3]/30"
+                        >
+                          + 2 Days Date
                         </button>
                       </div>
                     </div>
@@ -2315,23 +2421,35 @@ const CampaignsPage: React.FC = () => {
                   </div>
 
                   <div className="space-y-2 pt-1">
-                    <div className="flex justify-between items-center">
-                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quick Personalization Tokens</span>
-                    </div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quick Dynamic Personalization Tokens</span>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => insertFormatting('initial-body', 'token', ' {{first_name}}')}
-                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-350 rounded text-[10px] font-mono text-slate-700 font-bold transition hover:bg-slate-300"
+                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 rounded text-[10px] font-mono text-slate-700 font-bold transition"
                       >
                         + First Name
                       </button>
                       <button
                         type="button"
                         onClick={() => insertFormatting('initial-body', 'token', ' {{company}}')}
-                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-350 rounded text-[10px] font-mono text-slate-700 font-bold transition hover:bg-slate-300"
+                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 rounded text-[10px] font-mono text-slate-700 font-bold transition"
                       >
                         + Company Name
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('initial-body', 'token', ' {{2_days_from_now}}')}
+                        className="px-2.5 py-1 bg-[#E6EFF6] hover:bg-[#D5E4F0] rounded text-[10px] font-mono text-[#2C5F78] font-bold transition border border-[#51A2C3]/30"
+                      >
+                        📅 + 2 Days From Now
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('initial-body', 'token', ' {{3_days_from_now}}')}
+                        className="px-2.5 py-1 bg-[#E6EFF6] hover:bg-[#D5E4F0] rounded text-[10px] font-mono text-[#2C5F78] font-bold transition border border-[#51A2C3]/30"
+                      >
+                        📅 + 3 Days From Now
                       </button>
                     </div>
                   </div>
@@ -2362,49 +2480,120 @@ const CampaignsPage: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                // ─── Stage 1-6: Follow-up Drafts ───
+                // ─── Stage 1-10: Follow-up Drafts ───
                 <div className="space-y-3 p-4 bg-blue-50/20 border border-blue-200/40 rounded-2xl">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800 text-xs">Stage {followUpStage} Follow-up Settings</span>
-                    <span className="text-[10px] bg-slate-200/80 px-2 py-0.5 rounded font-mono text-slate-600">
-                      Individual Draft
+                    <span className="text-[10px] bg-slate-200/80 px-2 py-0.5 rounded font-mono text-slate-600 font-bold">
+                      Follow-up Draft
                     </span>
                   </div>
 
                   {/* Cadence Calculation Section */}
                   <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Delay Cadence (From Today)</label>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Delay Cadence (From Previous Stage)</label>
                     <div className="grid grid-cols-2 gap-3 bg-white p-3 border border-slate-200 rounded-xl">
                       <div>
-                        <span className="block text-[9px] text-slate-400 font-bold uppercase mb-1">Set Cadence</span>
+                        <span className="block text-[9px] text-slate-400 font-bold uppercase mb-1">Set Business-Day Cadence</span>
                         <select
                           className="w-full bg-slate-50 border border-slate-200 rounded p-1.5 text-xs text-slate-700 focus:outline-none"
-                          value={form.schedule === 'Once' ? '2' : '3'}
+                          value={followUpCadences[followUpStage] || 3}
                           onChange={(e) => {
-                            const val = e.target.value;
-                            set('schedule', val === '2' ? 'Once' : 'Daily'); // temporary toggle
+                            const val = parseInt(e.target.value, 10);
+                            setFollowUpCadences(prev => {
+                              const copy = [...prev];
+                              copy[followUpStage] = val;
+                              return copy;
+                            });
                           }}
                         >
-                          <option value="2">2 days from now</option>
-                          <option value="3">3 days from now</option>
+                          <option value="1">1 business day from previous</option>
+                          <option value="2">2 business days from previous</option>
+                          <option value="3">3 business days from previous</option>
+                          <option value="4">4 business days from previous</option>
+                          <option value="5">5 business days from previous</option>
+                          <option value="7">7 business days from previous</option>
                         </select>
                       </div>
                       <div>
-                        <span className="block text-[9px] text-slate-400 font-bold uppercase mb-1">Calculated Dispatch Target Date</span>
+                        <span className="block text-[9px] text-slate-400 font-bold uppercase mb-1">Calculated Target Date (Skipping Sat/Sun)</span>
                         <span className="text-xs font-black text-emerald-600 block mt-2">
-                          {(() => {
-                            const daysToAdd = form.schedule === 'Once' ? 2 : 3;
-                            const targetDate = new Date();
-                            targetDate.setDate(targetDate.getDate() + daysToAdd);
-                            return targetDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-                          })()}
+                          {calculateBusinessDaysTargetDate(followUpCadences[followUpStage] || 3)}
                         </span>
                       </div>
                     </div>
                   </div>
 
+                  {/* Custom Follow-up Subject Line */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <label htmlFor="followup-subject" className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Follow-up Subject Line</label>
+                      <div className="flex flex-wrap gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = `Re: ${initialSubject || selected?.subject || ''}`;
+                            setFollowUpSubjects(prev => {
+                              const copy = [...prev];
+                              copy[followUpStage] = val;
+                              return copy;
+                            });
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[9px] font-bold text-slate-600 rounded border border-slate-200"
+                        >
+                          Re: Initial Subject
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const text = followUpSubjects[followUpStage] || '';
+                            const newVal = text + " {{first_name}}";
+                            setFollowUpSubjects(prev => {
+                              const copy = [...prev];
+                              copy[followUpStage] = newVal;
+                              return copy;
+                            });
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[9px] font-bold text-slate-600 rounded border border-slate-200"
+                        >
+                          + First Name
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const text = followUpSubjects[followUpStage] || '';
+                            const newVal = text + " {{company}}";
+                            setFollowUpSubjects(prev => {
+                              const copy = [...prev];
+                              copy[followUpStage] = newVal;
+                              return copy;
+                            });
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-[9px] font-bold text-slate-600 rounded border border-slate-200"
+                        >
+                          + Company
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      id="followup-subject"
+                      type="text"
+                      placeholder={`Default: Re: ${initialSubject || selected?.subject || ''}`}
+                      value={followUpSubjects[followUpStage] || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFollowUpSubjects(prev => {
+                          const copy = [...prev];
+                          copy[followUpStage] = val;
+                          return copy;
+                        });
+                      }}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-slate-800 text-xs focus:outline-none"
+                    />
+                  </div>
+
                   {/* Individual Draft Edit Section */}
-                   <div className="space-y-1">
+                  <div className="space-y-1">
                     <label htmlFor="followup-editor" className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Follow-up Template Body</label>
                     <div className="border border-slate-200 rounded-xl overflow-hidden focus-within:ring-1 focus-within:ring-[#4BA7C9]">
                       <div className="flex items-center gap-1.5 p-2 bg-slate-50 border-b border-slate-200 text-xs">
@@ -2434,24 +2623,35 @@ const CampaignsPage: React.FC = () => {
                   </div>
 
                   <div className="space-y-2 pt-2">
-                    <div className="flex justify-between items-center">
-                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quick Personalization Tokens</span>
-                      <span className="text-[9px] text-slate-400 italic">Values resolve dynamically from database</span>
-                    </div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quick Personalization Tokens</span>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => insertFormatting('followup-editor', 'token', ' {{first_name}}')}
-                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-350 rounded text-[10px] font-mono text-slate-700 font-bold transition hover:bg-slate-300"
+                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 rounded text-[10px] font-mono text-slate-700 font-bold transition"
                       >
                         + First Name
                       </button>
                       <button
                         type="button"
                         onClick={() => insertFormatting('followup-editor', 'token', ' {{company}}')}
-                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-350 rounded text-[10px] font-mono text-slate-700 font-bold transition hover:bg-slate-300"
+                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 rounded text-[10px] font-mono text-slate-700 font-bold transition"
                       >
                         + Company Name
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('followup-editor', 'token', ' {{2_days_from_now}}')}
+                        className="px-2.5 py-1 bg-[#E6EFF6] hover:bg-[#D5E4F0] rounded text-[10px] font-mono text-[#2C5F78] font-bold transition border border-[#51A2C3]/30"
+                      >
+                        📅 + 2 Days From Now
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('followup-editor', 'token', ' {{3_days_from_now}}')}
+                        className="px-2.5 py-1 bg-[#E6EFF6] hover:bg-[#D5E4F0] rounded text-[10px] font-mono text-[#2C5F78] font-bold transition border border-[#51A2C3]/30"
+                      >
+                        📅 + 3 Days From Now
                       </button>
                     </div>
                   </div>
@@ -2490,11 +2690,16 @@ const CampaignsPage: React.FC = () => {
                       <div className="pb-1.5 border-b border-slate-100">
                         <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Subject Preview</span>
                         <span className="font-bold text-slate-800 text-xs">
-                          {initialSubject
-                            .replace(/{name}/g, previewName)
-                            .replace(/{company_name}/g, previewCompany)
-                            .replace(/{company}/g, previewCompany)
-                          }
+                          {formatDynamicDateTokens(
+                            initialSubject
+                              .replace(/{name}/g, previewName)
+                              .replace(/{company_name}/g, previewCompany)
+                              .replace(/{company}/g, previewCompany)
+                              .replace(/{{name}}/g, previewName)
+                              .replace(/{{first_name}}/g, previewName.split(' ')[0] || previewName)
+                              .replace(/{{company_name}}/g, previewCompany)
+                              .replace(/{{company}}/g, previewCompany)
+                          )}
                         </span>
                       </div>
                       <div>
@@ -2502,33 +2707,56 @@ const CampaignsPage: React.FC = () => {
                         <div 
                           className="font-sans text-slate-700 whitespace-pre-wrap leading-relaxed bg-[#FAF9F6] p-2.5 rounded border border-slate-100 max-h-[150px] overflow-y-auto text-[11px]"
                           dangerouslySetInnerHTML={{
-                            __html: initialBody
-                              .replace(/{name}/g, previewName)
-                              .replace(/{company_name}/g, previewCompany)
-                              .replace(/{company}/g, previewCompany)
-                              .replace(/{{name}}/g, previewName)
-                              .replace(/{{company_name}}/g, previewCompany)
-                              .replace(/{{company}}/g, previewCompany)
+                            __html: formatDynamicDateTokens(
+                              initialBody
+                                .replace(/{name}/g, previewName)
+                                .replace(/{company_name}/g, previewCompany)
+                                .replace(/{company}/g, previewCompany)
+                                .replace(/{{name}}/g, previewName)
+                                .replace(/{{first_name}}/g, previewName.split(' ')[0] || previewName)
+                                .replace(/{{company_name}}/g, previewCompany)
+                                .replace(/{{company}}/g, previewCompany)
+                            )
                           }}
                         />
                       </div>
                     </>
                   ) : (
-                    <div>
-                      <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Follow-up {followUpStage} Body Preview</span>
-                      <div 
-                        className="font-sans text-slate-700 whitespace-pre-wrap leading-relaxed bg-[#FAF9F6] p-2.5 rounded border border-slate-100 max-h-[150px] overflow-y-auto text-[11px]"
-                        dangerouslySetInnerHTML={{
-                          __html: (followUps[followUpStage] || '')
-                            .replace(/{name}/g, previewName)
-                            .replace(/{company_name}/g, previewCompany)
-                            .replace(/{company}/g, previewCompany)
-                            .replace(/{{name}}/g, previewName)
-                            .replace(/{{company_name}}/g, previewCompany)
-                            .replace(/{{company}}/g, previewCompany)
-                        }}
-                      />
-                    </div>
+                    <>
+                      <div className="pb-1.5 border-b border-slate-100">
+                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Follow-up {followUpStage} Subject Preview</span>
+                        <span className="font-bold text-slate-800 text-xs">
+                          {formatDynamicDateTokens(
+                            (followUpSubjects[followUpStage] || `Re: ${initialSubject || selected?.subject || ''}`)
+                              .replace(/{name}/g, previewName)
+                              .replace(/{company_name}/g, previewCompany)
+                              .replace(/{company}/g, previewCompany)
+                              .replace(/{{name}}/g, previewName)
+                              .replace(/{{first_name}}/g, previewName.split(' ')[0] || previewName)
+                              .replace(/{{company_name}}/g, previewCompany)
+                              .replace(/{{company}}/g, previewCompany)
+                          )}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold mb-1">Follow-up {followUpStage} Body Preview</span>
+                        <div 
+                          className="font-sans text-slate-700 whitespace-pre-wrap leading-relaxed bg-[#FAF9F6] p-2.5 rounded border border-slate-100 max-h-[150px] overflow-y-auto text-[11px]"
+                          dangerouslySetInnerHTML={{
+                            __html: formatDynamicDateTokens(
+                              (followUps[followUpStage] || '')
+                                .replace(/{name}/g, previewName)
+                                .replace(/{company_name}/g, previewCompany)
+                                .replace(/{company}/g, previewCompany)
+                                .replace(/{{name}}/g, previewName)
+                                .replace(/{{first_name}}/g, previewName.split(' ')[0] || previewName)
+                                .replace(/{{company_name}}/g, previewCompany)
+                                .replace(/{{company}}/g, previewCompany)
+                            )
+                          }}
+                        />
+                      </div>
+                    </>
                   )}
                 </div>
               </div>

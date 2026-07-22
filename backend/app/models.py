@@ -263,6 +263,7 @@ class Campaign(PostgresModel):
     subject: Optional[str] = None
     body_template: Optional[str] = None  # plain text; {name}, {company} etc.
     follow_up_templates: Optional[List[str]] = None
+    follow_up_subjects: Optional[List[str]] = None
 
     # Scheduled send time as ISO-8601 string e.g. "2026-05-20T09:00:00"
     send_at: Optional[str] = None
