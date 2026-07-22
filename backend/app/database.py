@@ -631,10 +631,13 @@ class PostgresModel(BaseModel):
         idx = 1
         for k, v in data.items():
             columns.append(k)
-            if k in ("follow_up_templates", "follow_up_subjects") and isinstance(v, list):
-                values.append([str(x) for x in v] if v is not None else [])
-            elif isinstance(v, (dict, list)):
-                values.append(json.dumps(v))
+            if k in ("follow_up_templates", "follow_up_subjects"):
+                placeholders.append(f"${idx}::text[]")
+                val_list = [str(x) for x in v] if (v is not None and isinstance(v, list)) else []
+                values.append(val_list)
+            elif k in ("email_config_pool", "icp_titles", "icp_departments", "icp_industries", "icp_regions") or isinstance(v, (dict, list)):
+                placeholders.append(f"${idx}::jsonb")
+                values.append(json.dumps(v) if v is not None else "[]")
             else:
                 if k.endswith("_id") and v == "":
                     v = None
@@ -643,8 +646,11 @@ class PostgresModel(BaseModel):
                         v = datetime.fromisoformat(v.replace("Z", "+00:00"))
                     except ValueError:
                         pass
+                if k == "id" or k.endswith("_id"):
+                    placeholders.append(f"${idx}::uuid")
+                else:
+                    placeholders.append(f"${idx}")
                 values.append(_coerce_db_value(k, v))
-            placeholders.append(f"${idx}")
             idx += 1
             
         cols_str = ", ".join(columns)
@@ -669,11 +675,13 @@ class PostgresModel(BaseModel):
         values = []
         idx = 1
         for k, v in data.items():
-            set_clauses.append(f"{k} = ${idx}")
-            if k in ("follow_up_templates", "follow_up_subjects") and isinstance(v, list):
-                values.append([str(x) for x in v] if v is not None else [])
-            elif isinstance(v, (dict, list)):
-                values.append(json.dumps(v))
+            if k in ("follow_up_templates", "follow_up_subjects"):
+                set_clauses.append(f"{k} = ${idx}::text[]")
+                val_list = [str(x) for x in v] if (v is not None and isinstance(v, list)) else []
+                values.append(val_list)
+            elif k in ("email_config_pool", "icp_titles", "icp_departments", "icp_industries", "icp_regions") or isinstance(v, (dict, list)):
+                set_clauses.append(f"{k} = ${idx}::jsonb")
+                values.append(json.dumps(v) if v is not None else "[]")
             else:
                 if k.endswith("_id") and v == "":
                     v = None
@@ -682,12 +690,16 @@ class PostgresModel(BaseModel):
                         v = datetime.fromisoformat(v.replace("Z", "+00:00"))
                     except ValueError:
                         pass
+                if k == "id" or k.endswith("_id"):
+                    set_clauses.append(f"{k} = ${idx}::uuid")
+                else:
+                    set_clauses.append(f"{k} = ${idx}")
                 values.append(_coerce_db_value(k, v))
             idx += 1
             
         values.append(_coerce_db_value("id", self.id))
         set_str = ", ".join(set_clauses)
-        query = f"UPDATE {table} SET {set_str} WHERE id = ${idx}"
+        query = f"UPDATE {table} SET {set_str} WHERE id = ${idx}::uuid"
         
         async with db_pool.acquire() as conn:
             await conn.execute(query, *values)
