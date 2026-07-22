@@ -63,6 +63,9 @@ jobs:
             # Prune unused images and layers to free up disk space
             docker system prune -a -f --volumes
 
+            # Create shared docker network if not present
+            docker network create emailapp-network || true
+
             # Pull targeted ECR images
             docker pull $REGISTRY/${{ env.ECR_BACKEND_REP }}:$TARGET_TAG
             docker pull $REGISTRY/${{ env.ECR_FRONTEND_REP }}:$TARGET_TAG
@@ -74,6 +77,8 @@ jobs:
             # Run Backend container (bonded to Supabase, JWT Secret, and OpenAI)
             docker run -d \
               --name backend \
+              --network emailapp-network \
+              --network-alias backend-api \
               --restart always \
               -p 8000:8000 \
               -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
@@ -92,6 +97,11 @@ jobs:
             # Run Frontend container
             docker run -d \
               --name frontend \
+              --network emailapp-network \
               --restart always \
               -p 8080:80 \
               $REGISTRY/${{ env.ECR_FRONTEND_REP }}:$TARGET_TAG
+
+            # Verify container health
+            sleep 3
+            docker ps
