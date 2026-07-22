@@ -1230,7 +1230,7 @@ async def _run_scheduled_campaigns() -> None:
 
     candidates = [
         c for c in all_campaigns 
-        if c.status in ["draft", "active"] and c.email_config_id
+        if c.status in ["draft", "active"] and (c.email_config_id or c.email_config_pool)
     ]
 
     now = datetime.now(timezone.utc)
@@ -1239,24 +1239,31 @@ async def _run_scheduled_campaigns() -> None:
         fresh_due = False
         if campaign.send_at:
             try:
-                send_dt_str = campaign.send_at.replace("Z", "+00:00")
-                send_dt = datetime.fromisoformat(send_dt_str)
-                if send_dt.tzinfo is None:
-                    send_dt = send_dt.replace(tzinfo=timezone.utc)
+                if isinstance(campaign.send_at, datetime):
+                    send_dt = campaign.send_at
+                    if send_dt.tzinfo is None:
+                        send_dt = send_dt.replace(tzinfo=timezone.utc)
+                else:
+                    send_dt_str = str(campaign.send_at).replace("Z", "+00:00")
+                    send_dt = datetime.fromisoformat(send_dt_str)
+                    if send_dt.tzinfo is None:
+                        send_dt = send_dt.replace(tzinfo=timezone.utc)
                 if send_dt <= now:
                     fresh_due = True
-            except ValueError:
-                logger.warning("Campaign %s has invalid send_at: %s", campaign.id, campaign.send_at)
+            except Exception:
+                logger.warning("Campaign %s has unparseable send_at: %s", campaign.id, campaign.send_at)
 
         # Check if any follow-up is due
         followups_due = False
         try:
             if db_pool:
+                import uuid
+                c_uuid = uuid.UUID(str(campaign.id)) if isinstance(campaign.id, str) else campaign.id
                 async with db_pool.acquire() as conn:
                     # Query for any recipient in this campaign due for follow-up (status='sent' and next_follow_up_at <= now)
                     row = await conn.fetchrow(
                         "SELECT id FROM public.recipients WHERE campaign_id = $1::uuid AND status = 'sent' AND next_follow_up_at IS NOT NULL AND next_follow_up_at <= $2 LIMIT 1",
-                        campaign.id,
+                        c_uuid,
                         now
                     )
                     if row:

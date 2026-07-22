@@ -279,12 +279,22 @@ async def update_campaign(campaign_id: str, payload: schemas.CampaignUpdate, cur
 
     update_data = payload.model_dump(exclude_none=True)
     if "status" in update_data:
-        if update_data["status"] == "paused":
+        target_status = update_data["status"]
+        if target_status == "paused":
             # Clear campaign send_at when pausing
             update_data["send_at"] = None
-        elif update_data["status"] == "active" and campaign.status == "paused":
-            # If resuming from paused and send_at is currently NULL, default to now so it starts immediately
-            if not campaign.send_at:
+        elif target_status == "active":
+            # Ensure email configuration exists before activating
+            email_cfg_id = update_data.get("email_config_id", campaign.email_config_id)
+            email_pool = update_data.get("email_config_pool", campaign.email_config_pool or [])
+            if not email_cfg_id and not email_pool:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot activate campaign without an attached email configuration. Please attach an email config first."
+                )
+
+            # Default send_at to current UTC time if not already set or scheduled
+            if not campaign.send_at and "send_at" not in update_data:
                 from datetime import datetime, timezone
                 update_data["send_at"] = datetime.now(timezone.utc).isoformat()
 

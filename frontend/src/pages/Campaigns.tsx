@@ -626,7 +626,8 @@ const CampaignsPage: React.FC = () => {
         await refreshData();
         setShowFollowUpModal(false);
       } else {
-        showToast('❌ Failed to update Sequence.');
+        const errText = await res.text();
+        showToast(`❌ Failed to update Sequence: ${errText || 'Server error'}`);
       }
     } catch {
       showToast('❌ Network error saving sequence.');
@@ -654,7 +655,8 @@ const CampaignsPage: React.FC = () => {
         await refreshData();
         showToast('📅 Campaign schedule updated successfully!');
       } else {
-        showToast('❌ Failed to update schedule.');
+        const errText = await res.text();
+        showToast(`❌ Failed to update schedule: ${errText || 'Server error'}`);
       }
     } catch (e) {
       showToast('❌ Network error updating schedule.');
