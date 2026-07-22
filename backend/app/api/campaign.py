@@ -291,17 +291,21 @@ async def update_campaign(campaign_id: str, payload: schemas.CampaignUpdate, cur
 
     if update_data:
         await campaign.update({"$set": update_data})
-        if payload.status in ("active", "paused") or payload.max_contacts_per_company is not None:
-            from app.scheduler import apply_company_throttling, update_recipient_send_times
-            # Reload to get the latest values
-            campaign = await models.Campaign.get(campaign_id)
-            if campaign:
-                await apply_company_throttling(campaign_id, campaign.max_contacts_per_company or 1)
-                await update_recipient_send_times(campaign_id)
+        try:
+            if payload.status in ("active", "paused") or payload.max_contacts_per_company is not None:
+                from app.scheduler import apply_company_throttling, update_recipient_send_times
+                # Reload to get the latest values
+                campaign = await models.Campaign.get(campaign_id)
+                if campaign:
+                    await apply_company_throttling(campaign_id, campaign.max_contacts_per_company or 1)
+                    await update_recipient_send_times(campaign_id)
 
-        elif payload.send_at is not None or payload.mails_per_minute is not None:
-            from app.scheduler import update_recipient_send_times
-            await update_recipient_send_times(campaign_id)
+            elif payload.send_at is not None or payload.mails_per_minute is not None:
+                from app.scheduler import update_recipient_send_times
+                await update_recipient_send_times(campaign_id)
+        except Exception as e:
+            logger.error("Error during campaign scheduling update for %s: %s", campaign_id, e, exc_info=True)
+
         severity = "warning" if payload.status == "paused" else "info"
         await log_activity(
             action="campaign_updated",

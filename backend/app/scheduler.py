@@ -265,17 +265,18 @@ async def apply_company_throttling(campaign_id: str, max_contacts_per_company: i
                     deferred_ids.append(r.id)
 
     if pending_ids or deferred_ids:
+        import uuid
         async with db_pool.acquire() as conn:
             async with conn.transaction():
                 if pending_ids:
                     await conn.execute(
                         "UPDATE public.recipients SET status = 'pending' WHERE id = ANY($1::uuid[])",
-                        pending_ids
+                        [uuid.UUID(str(pid)) for pid in pending_ids]
                     )
                 if deferred_ids:
                     await conn.execute(
                         "UPDATE public.recipients SET status = 'deferred' WHERE id = ANY($1::uuid[])",
-                        deferred_ids
+                        [uuid.UUID(str(did)) for did in deferred_ids]
                     )
 
 
@@ -1283,17 +1284,19 @@ async def update_recipient_send_times(campaign_id: str) -> None:
 
     if campaign.status == "paused" or not campaign.send_at:
         # Clear estimated send times and reset deferred recipients to pending
+        import uuid
+        c_uuid = uuid.UUID(str(campaign.id)) if isinstance(campaign.id, str) else campaign.id
         async with db_pool.acquire() as conn:
             async with conn.transaction():
                 # Clear send_at for pending
                 await conn.execute(
                     "UPDATE public.recipients SET send_at = NULL WHERE campaign_id = $1::uuid AND status = 'pending'",
-                    campaign.id
+                    c_uuid
                 )
                 # Reset deferred to pending
                 await conn.execute(
                     "UPDATE public.recipients SET status = 'pending', send_at = NULL WHERE campaign_id = $1::uuid AND status = 'deferred'",
-                    campaign.id
+                    c_uuid
                 )
         return
 
@@ -1339,11 +1342,16 @@ async def update_recipient_send_times(campaign_id: str) -> None:
 
 
     if batch_data:
+        import uuid
+        formatted_batch = [
+            (send_time, uuid.UUID(str(rid)) if isinstance(rid, str) else rid)
+            for send_time, rid in batch_data
+        ]
         async with db_pool.acquire() as conn:
             async with conn.transaction():
                 await conn.executemany(
                     "UPDATE public.recipients SET send_at = $1 WHERE id = $2::uuid",
-                    batch_data
+                    formatted_batch
                 )
 
 

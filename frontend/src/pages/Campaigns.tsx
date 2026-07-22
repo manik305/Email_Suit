@@ -690,6 +690,7 @@ const CampaignsPage: React.FC = () => {
   const handleToggleStatus = async () => {
     if (!selected) return;
     const newStatus = selected.status === 'active' ? 'paused' : 'active';
+    console.log("Updating campaign status to:", newStatus);
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -706,13 +707,16 @@ const CampaignsPage: React.FC = () => {
         window.location.href = '/';
         return;
       }
-      if (res.ok) {
-        showToast(`Campaign status updated to ${newStatus}`);
-        await refreshData();
-      } else {
-        showToast('Failed to update campaign status.');
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Server Error Details:', errorText);
+        showToast(`Failed to update campaign status: ${res.status} ${res.statusText}`);
+        return;
       }
+      showToast(`Campaign status updated to ${newStatus}`);
+      await refreshData();
     } catch (err) {
+      console.error('Network error updating campaign status:', err);
       showToast('Network error updating campaign status.');
     }
   };

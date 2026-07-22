@@ -489,6 +489,46 @@ async def close_db() -> None:
 
 T = TypeVar('T', bound='PostgresModel')
 
+
+def _coerce_db_value(k: str, v: Any) -> Any:
+    """Coerce input values to native types required by asyncpg (e.g. UUID objects for UUID columns)."""
+    if v is None:
+        return None
+    if isinstance(v, str):
+        if v == "" and (k.endswith("_id") or k == "id"):
+            return None
+        if k == "id" or k.endswith("_id") or k in ("user_id", "project_id", "campaign_id", "email_config_id", "recipient_id"):
+            try:
+                import uuid
+                return uuid.UUID(v)
+            except (ValueError, TypeError):
+                pass
+        return v
+    import uuid
+    if isinstance(v, uuid.UUID):
+        return v
+    if isinstance(v, list):
+        if k in ("follow_up_templates", "follow_up_subjects"):
+            return [str(x) for x in v]
+        if k in ("email_config_pool", "icp_titles", "icp_departments", "icp_industries", "icp_regions"):
+            return json.dumps(v)
+        if k.endswith("_ids") or k in ("ids", "email_config_pool"):
+            coerced = []
+            for item in v:
+                if isinstance(item, str):
+                    try:
+                        coerced.append(uuid.UUID(item))
+                    except (ValueError, TypeError):
+                        coerced.append(item)
+                else:
+                    coerced.append(item)
+            return coerced
+        return json.dumps(v)
+    if isinstance(v, dict):
+        return json.dumps(v)
+    return v
+
+
 class PostgresModel(BaseModel):
     """
     Base class providing Beanie-like active record ORM methods over PostgreSQL.
@@ -516,15 +556,15 @@ class PostgresModel(BaseModel):
             
         # Validate UUID format
         try:
-            from uuid import UUID
-            UUID(id_str)
-        except ValueError:
+            import uuid
+            u_id = uuid.UUID(id_str)
+        except (ValueError, TypeError):
             return None
 
         table = cls.get_table_name()
         query = f"SELECT * FROM {table} WHERE id = $1"
         async with db_pool.acquire() as conn:
-            row = await conn.fetchrow(query, id_str)
+            row = await conn.fetchrow(query, u_id)
             if row:
                 return cls.from_row(row)
         return None
@@ -545,7 +585,7 @@ class PostgresModel(BaseModel):
         idx = 1
         for k, v in kwargs.items():
             where_clauses.append(f"{k} = ${idx}")
-            values.append(v)
+            values.append(_coerce_db_value(k, v))
             idx += 1
             
         where_str = " AND ".join(where_clauses) if where_clauses else "TRUE"
@@ -603,7 +643,7 @@ class PostgresModel(BaseModel):
                         v = datetime.fromisoformat(v.replace("Z", "+00:00"))
                     except ValueError:
                         pass
-                values.append(v)
+                values.append(_coerce_db_value(k, v))
             placeholders.append(f"${idx}")
             idx += 1
             
@@ -642,10 +682,10 @@ class PostgresModel(BaseModel):
                         v = datetime.fromisoformat(v.replace("Z", "+00:00"))
                     except ValueError:
                         pass
-                values.append(v)
+                values.append(_coerce_db_value(k, v))
             idx += 1
             
-        values.append(self.id)
+        values.append(_coerce_db_value("id", self.id))
         set_str = ", ".join(set_clauses)
         query = f"UPDATE {table} SET {set_str} WHERE id = ${idx}"
         
@@ -660,7 +700,7 @@ class PostgresModel(BaseModel):
         table = self.get_table_name()
         query = f"DELETE FROM {table} WHERE id = $1"
         async with db_pool.acquire() as conn:
-            await conn.execute(query, self.id)
+            await conn.execute(query, _coerce_db_value("id", self.id))
 
     async def update(self, update_dict: Dict[str, Any]) -> None:
         """Perform raw update operations on the record fields."""
@@ -727,7 +767,7 @@ class QuerySet:
         
         for k, v in self.filters.items():
             where_clauses.append(f"{k} = ${idx}")
-            values.append(v)
+            values.append(_coerce_db_value(k, v))
             idx += 1
             
         where_str = " AND ".join(where_clauses) if where_clauses else "TRUE"
@@ -746,7 +786,7 @@ class QuerySet:
         
         for k, v in self.filters.items():
             where_clauses.append(f"{k} = ${idx}")
-            values.append(v)
+            values.append(_coerce_db_value(k, v))
             idx += 1
             
         where_str = " AND ".join(where_clauses) if where_clauses else "TRUE"
@@ -778,7 +818,7 @@ class QuerySet:
         
         for k, v in self.filters.items():
             where_clauses.append(f"{k} = ${idx}")
-            values.append(v)
+            values.append(_coerce_db_value(k, v))
             idx += 1
             
         where_str = " AND ".join(where_clauses) if where_clauses else "TRUE"
