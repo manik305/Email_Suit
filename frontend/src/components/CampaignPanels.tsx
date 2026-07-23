@@ -904,11 +904,8 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
               <th className="px-6 py-3">First Name / Email</th>
               <th className="px-6 py-3">Company Name</th>
               <th className="px-6 py-3">Designation</th>
-              {currentFilter === 'pending' ? (
-                <th className="px-6 py-3">Scheduled Send</th>
-              ) : (
-                <th className="px-6 py-3">Scheduled Follow-up</th>
-              )}
+              <th className="px-6 py-3">Initial Mail Sent</th>
+              <th className="px-6 py-3">Next Scheduled Follow-up</th>
               <th className="px-6 py-3">Status</th>
               <th className="px-6 py-3">Actions</th>
             </tr>
@@ -952,40 +949,81 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
               </td>
               <td className="px-6 py-3 text-slate-400">{r.designation || '—'}</td>
               
-              {currentFilter === 'pending' ? (
-                <td className="px-6 py-3 text-slate-400 font-mono text-[11px]">
-                  {r.send_at ? new Date(r.send_at).toLocaleString('en-US', { 
-                    timeZone: 'Asia/Kolkata',
-                    month: 'short', 
-                    day: 'numeric', 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    timeZoneName: 'short'
-                  }) : 'Pending launch'}
-                </td>
-              ) : (
-                <td className="px-6 py-3 text-slate-400 font-mono text-[11px]">
-                  {r.next_follow_up_at ? (
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[9px] font-bold text-amber-500 uppercase">
-                        Stage {(r.follow_up_count || 0) + 1}
-                      </span>
-                      <span>
-                        {new Date(r.next_follow_up_at).toLocaleString('en-US', { 
-                          timeZone: 'Asia/Kolkata',
-                          month: 'short', 
-                          day: 'numeric', 
-                          hour: '2-digit', 
-                          minute: '2-digit',
-                          timeZoneName: 'short'
-                        })}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-slate-500">None / Completed</span>
-                  )}
-                </td>
-              )}
+              {/* Initial Mail Sent Column */}
+              <td className="px-6 py-3 text-slate-300 font-mono text-[11px]">
+                {(r.last_sent_at || r.send_at) ? (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] font-bold text-emerald-400 uppercase">
+                      {r.status === 'pending' ? 'Scheduled' : 'Sent'}
+                    </span>
+                    <span>
+                      {new Date(r.last_sent_at || r.send_at!).toLocaleString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        year: 'numeric',
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        timeZoneName: 'short'
+                      })}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-slate-500">Pending Launch</span>
+                )}
+              </td>
+
+              {/* Next Scheduled Follow-up Column */}
+              <td className="px-6 py-3 text-slate-300 font-mono text-[11px]">
+                {r.next_follow_up_at ? (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] font-bold text-amber-400 uppercase">
+                      🔄 Stage {(r.follow_up_count || 0) + 1} Follow-up
+                    </span>
+                    <span className="text-slate-200 font-bold">
+                      {new Date(r.next_follow_up_at).toLocaleString('en-US', { 
+                        weekday: 'short',
+                        month: 'short', 
+                        day: 'numeric', 
+                        year: 'numeric',
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        timeZoneName: 'short'
+                      })}
+                    </span>
+                  </div>
+                ) : (r.status === 'sent' && (r.last_sent_at || r.send_at)) ? (
+                  // Dynamic projection if next_follow_up_at is pending calculation (3 business days after initial)
+                  (() => {
+                    const baseDate = new Date(r.last_sent_at || r.send_at!);
+                    let added = 0;
+                    const nextDate = new Date(baseDate);
+                    while (added < 3) {
+                      nextDate.setDate(nextDate.getDate() + 1);
+                      if (nextDate.getDay() !== 0 && nextDate.getDay() !== 6) added++;
+                    }
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[9px] font-bold text-amber-400/80 uppercase">
+                          🔄 Predicted Follow-up 1
+                        </span>
+                        <span className="text-slate-300">
+                          {nextDate.toLocaleString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            timeZoneName: 'short'
+                          })}
+                        </span>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <span className="text-slate-500">None / Completed</span>
+                )}
+              </td>
 
 
               <td className="px-6 py-3">
