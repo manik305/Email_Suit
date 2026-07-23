@@ -506,14 +506,35 @@ async def close_db() -> None:
 T = TypeVar('T', bound='PostgresModel')
 
 
+
+NON_UUID_ID_FIELDS = {
+    "last_message_id",
+    "agent_id",
+    "page_id",
+    "message_id",
+    "thread_id",
+    "provider_message_id",
+    "in_reply_to_id",
+    "google_message_id",
+    "microsoft_message_id",
+    "reply_to_message_id",
+}
+
+
+def is_uuid_key(k: str) -> bool:
+    if k in NON_UUID_ID_FIELDS:
+        return False
+    return k == "id" or k.endswith("_id") or k in ("user_id", "project_id", "campaign_id", "email_config_id", "recipient_id", "source_campaign_id")
+
+
 def _coerce_db_value(k: str, v: Any) -> Any:
     """Coerce input values to native types required by asyncpg (e.g. UUID objects for UUID columns)."""
     if v is None:
         return None
     if isinstance(v, str):
-        if v == "" and (k.endswith("_id") or k == "id"):
+        if v == "" and is_uuid_key(k):
             return None
-        if k == "id" or k.endswith("_id") or k in ("user_id", "project_id", "campaign_id", "email_config_id", "recipient_id"):
+        if is_uuid_key(k):
             try:
                 import uuid
                 return uuid.UUID(v)
@@ -637,6 +658,7 @@ class PostgresModel(BaseModel):
             raise RuntimeError("Database pool not initialized.")
         table = self.get_table_name()
         
+        import uuid
         data = self.model_dump(exclude={"id"})
         columns = []
         values = []
@@ -649,18 +671,19 @@ class PostgresModel(BaseModel):
                 placeholders.append(f"${idx}::jsonb")
                 values.append(json.dumps(v) if v is not None else "[]")
             else:
-                if k.endswith("_id") and v == "":
+                if is_uuid_key(k) and v == "":
                     v = None
                 if k in ("send_at", "next_follow_up_at", "last_sent_at", "created_at", "otp_expires_at", "cooling_off_until") and isinstance(v, str) and v:
                     try:
                         v = datetime.fromisoformat(v.replace("Z", "+00:00"))
                     except ValueError:
                         pass
-                if k == "id" or k.endswith("_id"):
+                coerced = _coerce_db_value(k, v)
+                if is_uuid_key(k) and (coerced is None or isinstance(coerced, uuid.UUID)):
                     placeholders.append(f"${idx}::uuid")
                 else:
                     placeholders.append(f"${idx}")
-                values.append(_coerce_db_value(k, v))
+                values.append(coerced)
             idx += 1
             
         cols_str = ", ".join(columns)
@@ -681,6 +704,7 @@ class PostgresModel(BaseModel):
         table = self.get_table_name()
         data = self.model_dump(exclude={"id"})
         
+        import uuid
         set_clauses = []
         values = []
         idx = 1
@@ -689,23 +713,26 @@ class PostgresModel(BaseModel):
                 set_clauses.append(f"{k} = ${idx}::jsonb")
                 values.append(json.dumps(v) if v is not None else "[]")
             else:
-                if k.endswith("_id") and v == "":
+                if is_uuid_key(k) and v == "":
                     v = None
                 if k in ("send_at", "next_follow_up_at", "last_sent_at", "created_at", "otp_expires_at", "cooling_off_until") and isinstance(v, str) and v:
                     try:
                         v = datetime.fromisoformat(v.replace("Z", "+00:00"))
                     except ValueError:
                         pass
-                if k == "id" or k.endswith("_id"):
+                coerced = _coerce_db_value(k, v)
+                if is_uuid_key(k) and (coerced is None or isinstance(coerced, uuid.UUID)):
                     set_clauses.append(f"{k} = ${idx}::uuid")
                 else:
                     set_clauses.append(f"{k} = ${idx}")
-                values.append(_coerce_db_value(k, v))
+                values.append(coerced)
             idx += 1
             
-        values.append(_coerce_db_value("id", self.id))
+        coerced_id = _coerce_db_value("id", self.id)
+        values.append(coerced_id)
         set_str = ", ".join(set_clauses)
-        query = f"UPDATE {table} SET {set_str} WHERE id = ${idx}::uuid"
+        id_placeholder = f"${idx}::uuid" if (coerced_id is None or isinstance(coerced_id, uuid.UUID)) else f"${idx}"
+        query = f"UPDATE {table} SET {set_str} WHERE id = {id_placeholder}"
         
         async with db_pool.acquire() as conn:
             await conn.execute(query, *values)
