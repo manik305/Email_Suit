@@ -429,7 +429,8 @@ async def reset_database():
                     ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS name VARCHAR(255);
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS target_region VARCHAR(100) DEFAULT 'US' NOT NULL;
-                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_templates JSONB;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_templates JSONB DEFAULT '[]'::jsonb;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_subjects JSONB DEFAULT '[]'::jsonb;
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS created_by VARCHAR(255);
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS mails_per_minute INTEGER DEFAULT 2;
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS daily_fresh_limit INTEGER DEFAULT 100;

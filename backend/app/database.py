@@ -90,8 +90,24 @@ async def init_db() -> None:
                     ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS name VARCHAR(255);
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS target_region VARCHAR(100) DEFAULT 'US' NOT NULL;
-                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_templates TEXT[];
-                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_subjects TEXT[];
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_templates JSONB DEFAULT '[]'::jsonb;
+                    ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_subjects JSONB DEFAULT '[]'::jsonb;
+                    DO $$ 
+                    BEGIN 
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='campaigns' AND column_name='follow_up_templates' AND data_type='ARRAY'
+                        ) THEN
+                            ALTER TABLE public.campaigns ALTER COLUMN follow_up_templates TYPE jsonb USING to_jsonb(follow_up_templates);
+                        END IF;
+
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='campaigns' AND column_name='follow_up_subjects' AND data_type='ARRAY'
+                        ) THEN
+                            ALTER TABLE public.campaigns ALTER COLUMN follow_up_subjects TYPE jsonb USING to_jsonb(follow_up_subjects);
+                        END IF;
+                    END $$;
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS created_by VARCHAR(255);
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS mails_per_minute INTEGER DEFAULT 2;
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS daily_fresh_limit INTEGER DEFAULT 100;
@@ -508,9 +524,7 @@ def _coerce_db_value(k: str, v: Any) -> Any:
     if isinstance(v, uuid.UUID):
         return v
     if isinstance(v, list):
-        if k in ("follow_up_templates", "follow_up_subjects"):
-            return [str(x) for x in v]
-        if k in ("email_config_pool", "icp_titles", "icp_departments", "icp_industries", "icp_regions"):
+        if k in ("follow_up_templates", "follow_up_subjects", "email_config_pool", "icp_titles", "icp_departments", "icp_industries", "icp_regions"):
             return json.dumps(v)
         if k.endswith("_ids") or k in ("ids", "email_config_pool"):
             coerced = []
@@ -631,11 +645,7 @@ class PostgresModel(BaseModel):
         idx = 1
         for k, v in data.items():
             columns.append(k)
-            if k in ("follow_up_templates", "follow_up_subjects"):
-                placeholders.append(f"${idx}::text[]")
-                val_list = [str(x) for x in v] if (v is not None and isinstance(v, list)) else []
-                values.append(val_list)
-            elif k in ("email_config_pool", "icp_titles", "icp_departments", "icp_industries", "icp_regions") or isinstance(v, (dict, list)):
+            if k in ("follow_up_templates", "follow_up_subjects", "email_config_pool", "icp_titles", "icp_departments", "icp_industries", "icp_regions") or isinstance(v, (dict, list)):
                 placeholders.append(f"${idx}::jsonb")
                 values.append(json.dumps(v) if v is not None else "[]")
             else:
@@ -675,11 +685,7 @@ class PostgresModel(BaseModel):
         values = []
         idx = 1
         for k, v in data.items():
-            if k in ("follow_up_templates", "follow_up_subjects"):
-                set_clauses.append(f"{k} = ${idx}::text[]")
-                val_list = [str(x) for x in v] if (v is not None and isinstance(v, list)) else []
-                values.append(val_list)
-            elif k in ("email_config_pool", "icp_titles", "icp_departments", "icp_industries", "icp_regions") or isinstance(v, (dict, list)):
+            if k in ("follow_up_templates", "follow_up_subjects", "email_config_pool", "icp_titles", "icp_departments", "icp_industries", "icp_regions") or isinstance(v, (dict, list)):
                 set_clauses.append(f"{k} = ${idx}::jsonb")
                 values.append(json.dumps(v) if v is not None else "[]")
             else:
