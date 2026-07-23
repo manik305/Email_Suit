@@ -1509,15 +1509,7 @@ const CampaignsPage: React.FC = () => {
                     />
                   </div>
 
-                  <button
-                    onClick={handleUpdateSchedule}
-                    disabled={updatingSchedule}
-                    className="w-full py-2 bg-slate-800 text-white font-bold rounded-lg text-xs hover:bg-slate-700 transition"
-                  >
-                    Save Timing Settings
-                  </button>
-
-                  <div className="bg-[#E6EFF6]/40 border border-[#51A2C3]/20 rounded-xl p-3.5 space-y-2 mt-2">
+                  <div className="bg-[#E6EFF6]/40 border border-[#51A2C3]/20 rounded-xl p-3.5 space-y-3 mt-2">
                     <span className="text-[10px] font-bold text-[#2C5F78] uppercase tracking-wider block">Scheduler Constraints</span>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="bg-white p-2 rounded-lg border border-slate-150">
@@ -1541,7 +1533,7 @@ const CampaignsPage: React.FC = () => {
                           onChange={e => setSideDailyFreshLimit(parseInt(e.target.value))}
                           className="w-full bg-transparent text-slate-700 font-bold focus:outline-none"
                         >
-                          {[50, 100, 200, 300, 400, 500].map(v => (
+                          {[25, 50, 100, 200, 300, 400, 500].map(v => (
                             <option key={v} value={v}>{v} limit</option>
                           ))}
                         </select>
@@ -1572,13 +1564,22 @@ const CampaignsPage: React.FC = () => {
                           ))}
                         </select>
                       </div>
-                      <div className="bg-slate-50/50 p-2 rounded-lg border border-slate-150">
+                      <div className="bg-slate-50/50 p-2 rounded-lg border border-slate-150 col-span-2">
                         <span className="text-[9px] text-slate-400 block font-bold uppercase">Consecutive Errors</span>
-                        <span className={`font-bold ${selected?.consecutive_failures ? 'text-rose-500 font-black' : 'text-slate-700'}`}>
+                        <span className={`font-bold text-xs ${selected?.consecutive_failures ? 'text-rose-500 font-black' : 'text-slate-700'}`}>
                           {selected?.consecutive_failures ?? 0}/3
                         </span>
                       </div>
                     </div>
+
+                    <button
+                      onClick={handleUpdateSchedule}
+                      disabled={updatingSchedule}
+                      className="w-full py-2.5 bg-[#1E293B] hover:bg-[#0F172A] text-white font-bold rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5 mt-2"
+                    >
+                      <span>⚡</span>
+                      <span>{updatingSchedule ? 'Saving Timing Settings...' : 'Save Timing Settings'}</span>
+                    </button>
                   </div>
                 </div>
 
@@ -2522,9 +2523,9 @@ const CampaignsPage: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <span className="block text-[9px] text-slate-400 font-bold uppercase mb-1">Calculated Target Date (Skipping Sat/Sun)</span>
-                        <span className="text-xs font-black text-emerald-600 block mt-2">
-                          {calculateBusinessDaysTargetDate(followUpCadences[followUpStage] || 3)}
+                        <span className="block text-[9px] text-slate-400 font-bold uppercase mb-1">Calculated Dispatch Timestamp (Skipping Sat/Sun)</span>
+                        <span className="text-xs font-black text-emerald-600 block mt-2 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200/60">
+                          📅 {calculateBusinessDaysTargetDate(followUpCadences[followUpStage] || 3)} at 09:00 AM ({sideTimezone || selected?.timezone || 'America/New_York'})
                         </span>
                       </div>
                     </div>
