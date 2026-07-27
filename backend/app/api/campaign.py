@@ -160,9 +160,15 @@ async def create_campaign(payload: schemas.CampaignCreate, current_user_email: s
     target_region = getattr(payload, "target_region", "US") or "US"
     
     send_at = payload.send_at
-    if not send_at and payload.schedule == "Daily":
-        from app.scheduler import calculate_next_send_at
-        send_at = calculate_next_send_at(None, payload.schedule, timezone, target_region)
+    if not send_at:
+        from app.scheduler import calculate_next_send_at, is_within_business_hours
+        if payload.schedule and payload.schedule != "Once":
+            send_at = calculate_next_send_at(None, payload.schedule, timezone, target_region)
+        else:
+            from datetime import datetime, timezone
+            now_utc = datetime.now(timezone.utc)
+            is_ok, next_start_local = is_within_business_hours(now_utc, timezone)
+            send_at = (now_utc if is_ok else next_start_local.astimezone(timezone.utc)).isoformat()
 
     # Validate all pool config IDs
     email_config_pool = list(payload.email_config_pool or [])
@@ -293,10 +299,14 @@ async def update_campaign(campaign_id: str, payload: schemas.CampaignUpdate, cur
                     detail="Cannot activate campaign without an attached email configuration. Please attach an email config first."
                 )
 
-            # Default send_at to current UTC time if not already set or scheduled
+            # Default send_at within business hours (7:30 AM - 6:30 PM local timezone) if not set
             if not campaign.send_at and "send_at" not in update_data:
                 from datetime import datetime, timezone
-                update_data["send_at"] = datetime.now(timezone.utc).isoformat()
+                from app.scheduler import is_within_business_hours
+                campaign_tz = update_data.get("timezone", campaign.timezone or "America/New_York")
+                now_utc = datetime.now(timezone.utc)
+                is_ok, next_start_local = is_within_business_hours(now_utc, campaign_tz)
+                update_data["send_at"] = (now_utc if is_ok else next_start_local.astimezone(timezone.utc)).isoformat()
 
 
     if update_data:

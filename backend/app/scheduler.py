@@ -26,8 +26,59 @@ logger = logging.getLogger(__name__)
 _scheduler: AsyncIOScheduler | None = None
 
 
+def clamp_to_business_hours(hour: int, minute: int) -> tuple[int, int]:
+    """Clamps local hour/minute strictly to the 7:30 AM - 6:30 PM (07:30 - 18:30) window."""
+    total_minutes = hour * 60 + minute
+    start_minutes = 7 * 60 + 30   # 450
+    end_minutes = 18 * 60 + 30    # 1110
+    
+    if total_minutes < start_minutes:
+        return 7, 30
+    if total_minutes > end_minutes:
+        return 18, 30
+    return hour, minute
+
+
+def is_within_business_hours(dt: Optional[datetime], tz_name: Optional[str]) -> tuple[bool, datetime]:
+    """
+    Checks if a given datetime falls within Business Hours (7:30 AM to 6:30 PM local time, Mon-Fri).
+    Returns (is_valid, next_valid_start_dt_local).
+    """
+    from datetime import time
+    
+    try:
+        tz = ZoneInfo(tz_name) if tz_name else ZoneInfo("America/New_York")
+    except Exception:
+        tz = ZoneInfo("America/New_York")
+
+    if dt is None:
+        dt = datetime.now(timezone.utc)
+    elif dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    local_dt = dt.astimezone(tz)
+    start_time = time(7, 30, 0)
+    end_time = time(18, 30, 0)
+
+    is_weekday = local_dt.weekday() < 5
+    is_in_time_window = start_time <= local_dt.time() <= end_time
+
+    if is_weekday and is_in_time_window:
+        return True, local_dt
+
+    # Compute next valid start at 7:30 AM on a business day
+    next_dt = local_dt.replace(hour=7, minute=30, second=0, microsecond=0)
+    if local_dt.time() > end_time or not is_weekday:
+        next_dt += timedelta(days=1)
+    
+    while next_dt.weekday() >= 5:
+        next_dt += timedelta(days=1)
+
+    return False, next_dt
+
+
 def calculate_next_send_at(current_send_at_str: Optional[str], schedule: str, tz_name: Optional[str], target_region: str = "US") -> Optional[str]:
-    """Calculate the next send_at time, preserving the local hour/minute in the campaign's timezone."""
+    """Calculate the next send_at time, preserving the local hour/minute clamped to 7:30 AM - 6:30 PM in the campaign's timezone."""
     if not schedule or schedule == "Once":
         return None
         
@@ -41,15 +92,13 @@ def calculate_next_send_at(current_send_at_str: Optional[str], schedule: str, tz
     if current_send_at_str:
         try:
             current_dt = datetime.fromisoformat(current_send_at_str.replace("Z", "+00:00")).astimezone(tz)
-            target_hour = current_dt.hour
-            target_minute = current_dt.minute
+            raw_h, raw_m = current_dt.hour, current_dt.minute
         except Exception:
-            target_hour = 9
-            target_minute = 0
+            raw_h, raw_m = 7, 30
     else:
-        target_hour = 9
-        target_minute = 0
+        raw_h, raw_m = 7, 30
         
+    target_hour, target_minute = clamp_to_business_hours(raw_h, raw_m)
     local_now = now.astimezone(tz)
     
     if schedule == "Daily":
@@ -77,7 +126,7 @@ def calculate_next_send_at(current_send_at_str: Optional[str], schedule: str, tz
 
 
 def calculate_next_follow_up(campaign: 'Campaign', days: int = 3) -> datetime:
-    """Calculate the next follow-up datetime matching the campaign's target timezone and time of day (min gap 3 business days)."""
+    """Calculate the next follow-up datetime strictly within Business Hours (7:30 AM - 6:30 PM) matching the campaign's target timezone."""
     now = datetime.now(timezone.utc)
     tz_name = campaign.timezone or "America/New_York"
     try:
@@ -85,23 +134,17 @@ def calculate_next_follow_up(campaign: 'Campaign', days: int = 3) -> datetime:
     except Exception:
         tz = ZoneInfo("America/New_York")
         
-    target_hour = 9
-    target_minute = 0
-    target_second = 0
-    
     if campaign.send_at:
         try:
             send_dt = datetime.fromisoformat(campaign.send_at.replace("Z", "+00:00")).astimezone(tz)
-            target_hour = send_dt.hour
-            target_minute = send_dt.minute
+            target_hour, target_minute = clamp_to_business_hours(send_dt.hour, send_dt.minute)
             target_second = send_dt.second
         except Exception:
-            pass
+            target_hour, target_minute, target_second = 7, 30, 0
     else:
         local_now = now.astimezone(tz)
-        target_hour = local_now.hour
-        target_minute = local_now.minute
-        target_second = local_now.second
+        target_hour, target_minute = clamp_to_business_hours(local_now.hour, local_now.minute)
+        target_second = 0
 
     local_start = now.astimezone(tz)
     current_date = local_start
@@ -121,6 +164,8 @@ def calculate_next_follow_up(campaign: 'Campaign', days: int = 3) -> datetime:
     # Guarantee result is at least 20 hours in the future to prevent same-day resending
     if result_utc <= now + timedelta(hours=20):
         result_utc += timedelta(days=1)
+        while result_utc.weekday() >= 5:
+            result_utc += timedelta(days=1)
     return result_utc
 
 
@@ -566,16 +611,19 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
 
         # ── Strict Weekend Execution Block ──
         # Ensure we do not send any fresh contacts or follow-ups on weekends.
+        # ── Strict Business Hours Execution Block (7:30 AM to 6:30 PM, Mon-Fri) ──
         campaign_tz_name = campaign.timezone or "America/New_York"
-        try:
-            tz = ZoneInfo(campaign_tz_name)
-        except Exception:
-            tz = ZoneInfo("America/New_York")
-        local_now = datetime.now(timezone.utc).astimezone(tz)
-        if local_now.weekday() >= 5:
-            logger.info("Campaign %s: Weekend detected (%s). Skipping execution.", campaign_id, local_now.strftime("%A"))
+        is_ok, next_business_start = is_within_business_hours(datetime.now(timezone.utc), campaign_tz_name)
+        if not is_ok:
+            next_send_at_iso = next_business_start.astimezone(timezone.utc).isoformat()
+            logger.info("Campaign %s: Outside business hours (7:30 AM - 6:30 PM %s). Rescheduling send_at to %s", campaign_id, campaign_tz_name, next_send_at_iso)
+            await campaign.update({"$set": {
+                "send_at": next_send_at_iso,
+                "diagnostic_error": f"Outside business hours (7:30 AM - 6:30 PM {campaign_tz_name}). Resumes at {next_business_start.strftime('%b %d, %I:%M %p')}."
+            }})
+            await update_recipient_send_times(campaign.id)
             _active_campaign_runs.discard(campaign_id)
-            return {"sent": 0, "failed": 0, "status": "weekend_skip"}
+            return {"sent": 0, "failed": 0, "status": "business_hours_skip"}
 
 
         if campaign.status in ["paused", "completed"]:
@@ -1311,6 +1359,7 @@ async def update_recipient_send_times(campaign_id: str) -> None:
     pending_recipients = await Recipient.find(campaign_id=campaign_id, status="pending").to_list()
 
 
+    campaign_tz_name = campaign.timezone or "America/New_York"
     try:
         send_dt_str = campaign.send_at.replace("Z", "+00:00")
         base_time = datetime.fromisoformat(send_dt_str)
@@ -1318,6 +1367,11 @@ async def update_recipient_send_times(campaign_id: str) -> None:
             base_time = base_time.replace(tzinfo=timezone.utc)
     except Exception:
         base_time = datetime.now(timezone.utc)
+
+    # Ensure base_time starts within business hours (7:30 AM - 6:30 PM, M-F)
+    is_ok, valid_start_dt_local = is_within_business_hours(base_time, campaign_tz_name)
+    if not is_ok:
+        base_time = valid_start_dt_local.astimezone(timezone.utc)
 
     # Sort them by US Timezone Priority
     priority_map = {'EST': 1, 'CST': 2, 'MST': 3, 'PST': 4, 'UNKNOWN': 5}
@@ -1335,6 +1389,11 @@ async def update_recipient_send_times(campaign_id: str) -> None:
         mails_per_min = 1
     gap_seconds = 60.0 / mails_per_min
 
+    try:
+        tz = ZoneInfo(campaign_tz_name)
+    except Exception:
+        tz = ZoneInfo("America/New_York")
+
     batch_data = []
     for idx, r in enumerate(pending_recipients):
         day_offset = idx // daily_limit
@@ -1342,7 +1401,12 @@ async def update_recipient_send_times(campaign_id: str) -> None:
             # Calculate intra-day offset
             intra_day_seconds = idx * gap_seconds
             est_send_time = base_time + timedelta(seconds=intra_day_seconds)
-            batch_data.append((est_send_time, r.id))
+            est_local = est_send_time.astimezone(tz)
+            # Ensure estimated send time does not spill past 6:30 PM (18:30) local time
+            if est_local.hour > 18 or (est_local.hour == 18 and est_local.minute > 30) or est_local.weekday() >= 5:
+                batch_data.append((None, r.id))
+            else:
+                batch_data.append((est_send_time, r.id))
         else:
             # Do not schedule future days; set send_at to None (NULL in DB)
             batch_data.append((None, r.id))
