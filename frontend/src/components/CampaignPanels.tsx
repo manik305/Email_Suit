@@ -737,6 +737,8 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
     all: 'All Prospects',
     pending: 'Drafts (Queued)',
     sent: 'Sent',
+    scheduled: 'Scheduled Follow-ups',
+    scheduled_today: 'Scheduled Today',
     bounced: 'Bounced (Technical)',
     replied: 'Replied',
     hot: 'Hot Classification',
@@ -754,10 +756,15 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
       .then(r => r.json())
       .then((all: Recipient[]) => {
         let filtered = all;
+        const todayStr = new Date().toDateString();
         if (currentFilter === 'pending') {
           filtered = all.filter(r => r.status === 'pending');
         } else if (currentFilter === 'sent') {
           filtered = all.filter(r => r.status === 'sent');
+        } else if (currentFilter === 'scheduled') {
+          filtered = all.filter(r => r.status === 'sent' && Boolean(r.next_follow_up_at));
+        } else if (currentFilter === 'scheduled_today') {
+          filtered = all.filter(r => r.status === 'sent' && r.next_follow_up_at && new Date(r.next_follow_up_at).toDateString() === todayStr);
         } else if (currentFilter === 'bounced') {
           filtered = all.filter(r => r.status === 'bounced');
         } else if (currentFilter === 'replied') {
@@ -884,6 +891,8 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
             <option value="all">All Prospects</option>
             <option value="pending">Drafts / Pending</option>
             <option value="sent">Sent</option>
+            <option value="scheduled">🔄 Scheduled Follow-ups</option>
+            <option value="scheduled_today">📅 Scheduled Today</option>
             <option value="bounced">Bounced (Technical)</option>
             <option value="replied">Replied</option>
             <option value="hot">🔥 Hot Leads</option>

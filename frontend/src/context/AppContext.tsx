@@ -111,6 +111,8 @@ interface AppState {
     openRate: number;
     clickRate: number;
     activeCampaigns: number;
+    scheduledFollowUpsToday?: number;
+    totalScheduledFollowUps?: number;
     totalFilesUploaded: number;
     dataProcessedCount: number;
   };
@@ -234,6 +236,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const meetings: Meeting[]                     = meetingsData && Array.isArray(meetingsData.meetings) ? meetingsData.meetings : [];
 
       const activeConfig = emailConfigs.find(c => c.is_active);
+      const todayStr = new Date().toDateString();
+      const scheduledFollowUpsToday = recipients.filter(r => r.status === 'sent' && r.next_follow_up_at && new Date(r.next_follow_up_at).toDateString() === todayStr).length;
+      const totalScheduledFollowUps = recipients.filter(r => r.status === 'sent' && Boolean(r.next_follow_up_at)).length;
 
       setState(prev => ({
         ...prev,
@@ -241,6 +246,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           ...prev.metrics,
           ...metrics,
           activeCampaigns: campaigns.filter(c => c.status === 'active').length,
+          scheduledFollowUpsToday,
+          totalScheduledFollowUps,
         },
         recipients,
         campaigns,

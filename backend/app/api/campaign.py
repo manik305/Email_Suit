@@ -695,11 +695,20 @@ async def get_analytics_detail(
     not_bounce = len([r for r in recipients if r.response_category == "not_bounce"])
     total_responded = leads + hot + cold + negative + bounce_classified + ooo + automatic + not_bounce
 
-    total_followups_sent = sum(r.follow_up_count for r in recipients)
-    total_followups_pending = len([r for r in recipients if r.status == "sent" and r.next_follow_up_at])
-
     from datetime import datetime, timezone
     today_utc = datetime.now(timezone.utc).date()
+
+    total_followups_sent = sum(r.follow_up_count for r in recipients)
+    total_followups_pending = len([r for r in recipients if r.status == "sent" and r.next_follow_up_at])
+    total_followups_scheduled_today = 0
+    for r in recipients:
+        if r.status == "sent" and r.next_follow_up_at:
+            ref = r.next_follow_up_at
+            if ref.tzinfo is None:
+                ref = ref.replace(tzinfo=timezone.utc)
+            if ref.astimezone(timezone.utc).date() == today_utc:
+                total_followups_scheduled_today += 1
+
     sent_today = 0
     for r in recipients:
         if r.last_sent_at:
@@ -721,6 +730,7 @@ async def get_analytics_detail(
         total_responded=total_responded,
         total_followups_sent=total_followups_sent,
         total_followups_pending=total_followups_pending,
+        total_followups_scheduled_today=total_followups_scheduled_today,
         leads=leads,
         hot=hot,
         cold=cold,

@@ -908,6 +908,7 @@ const CampaignsPage: React.FC = () => {
                   
                   // 2. Scheduled (follow-ups scheduled)
                   const scheduledFollowUps = campaignRecipients.filter(r => r.status === 'sent' && r.next_follow_up_at).length;
+                  const scheduledFollowUpsToday = campaignRecipients.filter(r => r.status === 'sent' && r.next_follow_up_at && new Date(r.next_follow_up_at).toDateString() === todayStr).length;
 
                   // 3. Slots (daily fresh limit)
                   const slots = c.daily_fresh_limit ?? 100;
@@ -1085,13 +1086,13 @@ const CampaignsPage: React.FC = () => {
                           </div>
 
                           {/* Gauge 2 */}
-                          <div className="flex flex-col items-center">
+                          <div className="flex flex-col items-center" title={`${scheduledFollowUpsToday} scheduled today out of ${scheduledFollowUps} total`}>
                             <svg className="w-10 h-10" viewBox="0 0 36 36">
                               <path className="text-slate-200" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                               <path className="text-[#8B5CF6]" strokeWidth="3.5" strokeDasharray={`${scheduledFollowUps > 0 ? 100 : 0}, 100`} strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                               <text x="18" y="20.5" className="text-[9px] font-bold text-slate-700" textAnchor="middle">{scheduledFollowUps}</text>
                             </svg>
-                            <span className="text-[7px] font-bold text-slate-400 uppercase mt-1">Scheduled</span>
+                            <span className="text-[7px] font-bold text-slate-400 uppercase mt-1">Scheduled ({scheduledFollowUpsToday} Today)</span>
                           </div>
 
                           {/* Gauge 3 */}

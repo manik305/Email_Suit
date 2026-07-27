@@ -322,6 +322,7 @@ class CampaignAnalyticsDetail(BaseModel):
     total_responded: int = 0
     total_followups_sent: int = 0
     total_followups_pending: int = 0
+    total_followups_scheduled_today: int = 0
     leads: int = 0
     hot: int = 0
     cold: int = 0

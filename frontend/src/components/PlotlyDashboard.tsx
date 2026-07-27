@@ -269,6 +269,7 @@ export const PlotlyDashboard: React.FC = () => {
                 <th className="pb-3 pt-2 font-bold">Campaign Name</th>
                 <th className="pb-3 pt-2 font-bold text-center">Companies</th>
                 <th className="pb-3 pt-2 font-bold text-center">Contacts</th>
+                <th className="pb-3 pt-2 font-bold text-center">Scheduled Follow-ups</th>
                 <th className="pb-3 pt-2 font-bold text-center">Leads</th>
                 <th className="pb-3 pt-2 font-bold text-center">Hot</th>
                 <th className="pb-3 pt-2 font-bold text-center">Meetings</th>
@@ -281,7 +282,7 @@ export const PlotlyDashboard: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {campaigns.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-6 text-center text-slate-400 font-medium">
+                  <td colSpan={11} className="py-6 text-center text-slate-400 font-medium">
                     No campaigns created yet. Start by setting up a campaign.
                   </td>
                 </tr>
@@ -290,7 +291,10 @@ export const PlotlyDashboard: React.FC = () => {
                   const campaignRecipients = recipients.filter(r => r.campaign_id === c.id);
                   const companies = new Set(campaignRecipients.map(r => r.company_name).filter(Boolean)).size;
                   const contacts = campaignRecipients.length;
-                  
+                  const todayStr = new Date().toDateString();
+                  const totalScheduled = campaignRecipients.filter(r => r.status === 'sent' && Boolean(r.next_follow_up_at)).length;
+                  const todayScheduled = campaignRecipients.filter(r => r.status === 'sent' && r.next_follow_up_at && new Date(r.next_follow_up_at).toDateString() === todayStr).length;
+
                   const leadsCount = campaignRecipients.filter(r => r.response_category === 'lead').length;
                   const hotCount = campaignRecipients.filter(r => r.response_category === 'hot').length;
                   const coldCount = campaignRecipients.filter(r => r.response_category === 'cold').length;
@@ -305,6 +309,9 @@ export const PlotlyDashboard: React.FC = () => {
                       <td className="py-3 font-semibold text-slate-900">{c.name}</td>
                       <td className="py-3 text-slate-500 text-center font-bold">{companies}</td>
                       <td className="py-3 text-slate-500 text-center font-bold">{contacts}</td>
+                      <td className="py-3 text-center font-semibold text-indigo-600">
+                        {totalScheduled} <span className="text-[10px] text-indigo-400 font-normal">({todayScheduled} today)</span>
+                      </td>
                       <td className="py-3 text-slate-550 text-center font-semibold text-teal-600">{leadsCount}</td>
                       <td className="py-3 text-slate-550 text-center font-semibold text-amber-500">{hotCount}</td>
                       <td className="py-3 text-slate-550 text-center font-semibold text-emerald-600">{meetingsCount}</td>

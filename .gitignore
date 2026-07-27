@@ -52,3 +52,9 @@ hostinger_deployment_guide*
 Thumbs.db
 .vscode/
 .idea/
+
+# Nginx Configuration
+nginx_host.conf
+nginx/*.conf
+*.conf
+

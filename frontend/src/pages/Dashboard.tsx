@@ -30,7 +30,7 @@ const DashboardPage: React.FC = () => {
       </div>
 
       {/* High-Level Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
         <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group hover:border-blue-500/50 transition-colors">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-all"></div>
           <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">Total Emails Sent</p>
@@ -61,6 +61,18 @@ const DashboardPage: React.FC = () => {
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-4xl font-bold text-slate-900">{metrics?.activeCampaigns ?? campaigns.filter(c => c.status === 'active').length}</span>
             <span className="text-sm font-medium text-slate-500">Running</span>
+          </div>
+        </div>
+        <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group hover:border-indigo-500/50 transition-colors">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl group-hover:bg-indigo-500/20 transition-all"></div>
+          <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">Scheduled Follow-ups</p>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-4xl font-bold text-slate-900">
+              {metrics?.totalScheduledFollowUps ?? state.recipients.filter(r => r.status === 'sent' && Boolean(r.next_follow_up_at)).length}
+            </span>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200">
+              {metrics?.scheduledFollowUpsToday ?? state.recipients.filter(r => r.status === 'sent' && r.next_follow_up_at && new Date(r.next_follow_up_at).toDateString() === new Date().toDateString()).length} today
+            </span>
           </div>
         </div>
       </div>
