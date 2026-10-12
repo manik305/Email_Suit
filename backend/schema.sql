@@ -103,15 +103,18 @@ CREATE TABLE IF NOT EXISTS public.recipients (
     first_name VARCHAR(255),
     last_name VARCHAR(255),
     alternative_email VARCHAR(255), -- Alternate Mail ID
+    order_id VARCHAR(255), -- Order ID
     title VARCHAR(255), -- Designation
     department VARCHAR(255),
     website VARCHAR(255),
     company_name VARCHAR(255),
-    linkedin_url TEXT,
+    revenue VARCHAR(255), -- Company Revenue
+    linkedin_url TEXT, -- Person's LinkedIn URL
     industry VARCHAR(255),
     sub_industry VARCHAR(255),
-    state VARCHAR(255),
     city VARCHAR(255),
+    state VARCHAR(255),
+    country_code VARCHAR(50), -- Country Code
     zip_code VARCHAR(100), -- Zip / Pin Code
     country VARCHAR(255),
     region VARCHAR(255),
@@ -135,8 +138,11 @@ CREATE TABLE IF NOT EXISTS public.recipients (
 CREATE INDEX IF NOT EXISTS idx_recipients_email ON public.recipients(email);
 CREATE INDEX IF NOT EXISTS idx_recipients_campaign_id ON public.recipients(campaign_id);
 
--- Add response_category column to recipients (for DNC classification)
+-- Add response_category, revenue, and country_code columns to recipients
 ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS response_category VARCHAR(50);
+ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS revenue VARCHAR(255);
+ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS country_code VARCHAR(50);
+ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS city VARCHAR(255);
 -- values: 'lead' | 'hot' | 'cold' | 'negative' | 'bounce' | null
 
 -- 5. Recipient Tracking Events

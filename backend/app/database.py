@@ -89,6 +89,7 @@ async def init_db() -> None:
                     ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS otp VARCHAR(50);
                     ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS order_id VARCHAR(255);
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS target_region VARCHAR(100) DEFAULT 'US' NOT NULL;
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_templates JSONB DEFAULT '[]'::jsonb;
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS follow_up_subjects JSONB DEFAULT '[]'::jsonb;
@@ -123,6 +124,9 @@ async def init_db() -> None:
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS last_sent_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS response_text TEXT;
                     ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS last_message_id VARCHAR(255);
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS revenue VARCHAR(255);
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS country_code VARCHAR(50);
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS city VARCHAR(255);
                     ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS sender_email VARCHAR(255);
                     CREATE TABLE IF NOT EXISTS public.recipient_events (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

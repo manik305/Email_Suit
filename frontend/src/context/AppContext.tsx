@@ -17,13 +17,19 @@ export interface Recipient {
   first_name?: string;
   last_name?: string;
   alternative_email?: string;
+  order_id?: string;
+  title?: string;
   designation?: string;
   department?: string;
   company_name?: string;
   website?: string;
+  revenue?: string;
+  linkedin_url?: string;
   linkedin_id?: string;
   industry?: string;
+  city?: string;
   state?: string;
+  country_code?: string;
   pin_code?: string;
   country?: string;
   region?: string;
@@ -148,6 +154,8 @@ interface AppContextType {
   addFile: (file: UploadedFile) => void;
   uploadFileToBackend: (file: File, campaignId?: string) => Promise<{ success: boolean; rows_added?: number; duplicates_skipped?: number; error?: string }>;
   createCampaign: (data: CreateCampaignPayload) => Promise<Campaign | null>;
+  updateCampaignStatus: (campaignId: string, status: string) => Promise<boolean>;
+  cloneCampaign: (campaignId: string, newName: string) => Promise<Campaign | null>;
   updateEmailConfig: (config: EmailConfigLegacy) => void;
   refreshData: () => Promise<void>;
 }
@@ -341,6 +349,61 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const updateCampaignStatus = async (campaignId: string, status: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ status }),
+      });
+      if (res.ok) {
+        setState(prev => ({
+          ...prev,
+          campaigns: prev.campaigns.map(c => c.id === campaignId ? { ...c, status } : c),
+          metrics: {
+            ...prev.metrics,
+            activeCampaigns: prev.campaigns.map(c => c.id === campaignId ? { ...c, status } : c).filter(c => c.status === 'active').length,
+          }
+        }));
+        await refreshData();
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to update campaign status:', err);
+      return false;
+    }
+  };
+
+  const cloneCampaign = async (campaignId: string, newName: string): Promise<Campaign | null> => {
+    try {
+      const source = state.campaigns.find(c => c.id === campaignId);
+      if (!source) return null;
+      const payload: CreateCampaignPayload = {
+        name: newName,
+        target_segment: source.target_segment,
+        schedule: source.schedule,
+        subject: source.subject,
+        body_template: source.body_template,
+        campaign_type: source.campaign_type,
+        email_config_id: source.email_config_id,
+        timezone: source.timezone,
+        target_region: source.target_region,
+        mails_per_minute: source.mails_per_minute,
+        daily_fresh_limit: source.daily_fresh_limit,
+        daily_followup_limit: source.daily_followup_limit,
+        max_contacts_per_company: source.max_contacts_per_company,
+      };
+      return await createCampaign(payload);
+    } catch (err) {
+      console.error('Failed to clone campaign:', err);
+      return null;
+    }
+  };
+
   const updateEmailConfig = async (config: EmailConfigLegacy) => {
     try {
       if (config.provider && config.accountEmail) {
@@ -366,7 +429,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   return (
     <AppContext.Provider
-      value={{ state, addFile, uploadFileToBackend, createCampaign, updateEmailConfig, refreshData }}
+      value={{
+        state,
+        addFile,
+        uploadFileToBackend,
+        createCampaign,
+        updateCampaignStatus,
+        cloneCampaign,
+        updateEmailConfig,
+        refreshData
+      }}
     >
       {children}
     </AppContext.Provider>

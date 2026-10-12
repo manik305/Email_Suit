@@ -953,10 +953,17 @@ const RecipientsPanel: React.FC<{ campaignId: string; status: string }> = ({ cam
                     className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs w-full"
                   />
                 ) : (
-                  <span className="text-slate-400">{r.company_name || '—'}</span>
+                  <div>
+                    <span className="text-slate-400 font-medium">{r.company_name || '—'}</span>
+                    {r.revenue && (
+                      <span className="ml-2 text-[9px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded">
+                        {r.revenue}
+                      </span>
+                    )}
+                  </div>
                 )}
               </td>
-              <td className="px-6 py-3 text-slate-400">{r.designation || '—'}</td>
+              <td className="px-6 py-3 text-slate-400">{r.title || r.designation || '—'}</td>
               
               {/* Initial Mail Sent Column */}
               <td className="px-6 py-3 text-slate-300 font-mono text-[11px]">

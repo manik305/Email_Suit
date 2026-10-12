@@ -20,4 +20,5 @@ email-validator
 dnspython
 python-docx
 neo4j
+redis
 

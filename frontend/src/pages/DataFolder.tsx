@@ -1,20 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext, API_BASE_URL } from '../context/AppContext';
+import { useRealtimeEvents } from '../context/useRealtimeEvents';
 
 const REQUIRED_HEADERS = [
-  "first name",
-  "last name",
-  "mail ID",
-  "alternative mail ID",
-  "title",
-  "department",
-  "company name",
-  "website",
-  "LinkedIn ID",
-  "industry",
-  "state",
-  "pin code",
-  "country"
+  "First Name",
+  "Last Name",
+  "Mail ID",
+  "Title / Designation",
+  "Company Website",
+  "Company Name",
+  "Revenue",
+  "Person's LinkedIn URL",
+  "Industry",
+  "City",
+  "State",
+  "Country Code",
+  "Country Name"
 ];
 
 // Suggestions and lookup data
@@ -143,7 +144,53 @@ const DataFolderPage: React.FC = () => {
   // Spreadsheet row state
   const [spreadsheetRows, setSpreadsheetRows] = useState<any[]>([]);
 
+  // Real-Time Event Stream Listener
+  const { isConnected: isRealtimeConnected } = useRealtimeEvents((evt) => {
+    if (evt.event === 'email_sent' || evt.event === 'lead_updated') {
+      if (evt.data?.recipient_id) {
+        setSpreadsheetRows(prev => prev.map(r => {
+          if (r.id === evt.data.recipient_id) {
+            return { ...r, status: evt.data.status || 'sent' };
+          }
+          return r;
+        }));
+      }
+    }
+  });
+
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 3500); };
+
+  // Clipboard Paste (TSV from Excel/Google Sheets)
+  const handleGridPaste = (e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData('text');
+    if (!text || !text.includes('\t')) return;
+    e.preventDefault();
+    const rows = text.split(/\r?\n/).filter(line => line.trim() !== '');
+    const newItems = rows.map((line, idx) => {
+      const cols = line.split('\t');
+      return {
+        id: `new-${Date.now()}-${idx}`,
+        first_name: cols[0] || '',
+        last_name: cols[1] || '',
+        email: cols[2] || '',
+        order_id: cols[3] || '',
+        title: cols[4] || '',
+        company_name: cols[5] || '',
+        website: cols[6] || '',
+        revenue: cols[7] || '',
+        linkedin_url: cols[8] || '',
+        industry: cols[9] || '',
+        city: cols[10] || '',
+        state: cols[11] || '',
+        country_code: cols[12] || '',
+        country: cols[13] || '',
+        campaign_id: selectedCampaignId || null,
+        status: 'pending'
+      };
+    });
+    setSpreadsheetRows(prev => [...newItems, ...prev]);
+    showToast(`📋 Pasted ${newItems.length} rows directly into the spreadsheet.`);
+  };
 
   // Sync spreadsheet rows with backend recipients when campaign or backend state changes
   useEffect(() => {
@@ -291,15 +338,16 @@ const DataFolderPage: React.FC = () => {
       first_name: '',
       last_name: '',
       email: '',
-      alternative_email: '',
+      order_id: '',
       title: '',
-      department: '',
       company_name: '',
       website: '',
+      revenue: '',
       linkedin_url: '',
       industry: '',
+      city: '',
       state: '',
-      zip_code: '',
+      country_code: '',
       country: '',
       campaign_id: selectedCampaignId || null,
       status: 'pending'
@@ -329,17 +377,20 @@ const DataFolderPage: React.FC = () => {
 
       const payload = {
         email: row.email,
-        name: row.name || `${row.first_name || ''} ${row.last_name || ''}`.trim(),
+        name: row.name || `${row.first_name || ''} ${row.last_name || ''}`.trim() || null,
         first_name: row.first_name || null,
         last_name: row.last_name || null,
         alternative_email: row.alternative_email || null,
+        order_id: row.order_id || null,
         title: row.title || row.designation || null,
-        department: row.department || null,
         company_name: row.company_name || null,
         website: row.website || null,
+        revenue: row.revenue || null,
         linkedin_url: row.linkedin_url || row.linkedin_id || null,
         industry: row.industry || null,
+        city: row.city || null,
         state: row.state || null,
+        country_code: row.country_code || null,
         zip_code: row.zip_code || row.pin_code || null,
         country: row.country || null,
         campaign_id: row.campaign_id || null,
@@ -387,20 +438,26 @@ const DataFolderPage: React.FC = () => {
     }
   };
 
-  // Download Blank CSV Template
+  // Download Blank CSV Template matching redesigned schema
   const handleDownloadTemplate = () => {
     const csvContent = REQUIRED_HEADERS.join(",") + "\n" +
-      "John,Doe,john.doe@company.com,john.alt@personal.com,Senior Developer,Engineering,Company Inc,https://company.com,linkedin.com/in/johndoe,Software,California,90210,United States\n" +
-      "Jane,Smith,jane.smith@enterprise.com,jane.alt@personal.com,Product Manager,Product,Enterprise Corp,https://enterprise.com,linkedin.com/in/janesmith,Technology,New York,10001,United States";
+      "John,Doe,john.doe@techscale.io,VP of Sales,https://techscale.io,TechScale Inc,$25M,https://linkedin.com/in/johndoe,Software,San Francisco,California,US,United States\n" +
+      "Jane,Smith,jane.smith@apexsolutions.com,Chief Technology Officer,https://apexsolutions.com,Apex Solutions,$50M,https://linkedin.com/in/janesmith,Information Technology,London,Greater London,GB,United Kingdom";
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", "campaign_leads_template.csv");
+    link.setAttribute("download", "leads_data_dump_template.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // Export / Data Dump Method
+  const handleExportDataDump = () => {
+    const dumpUrl = `${API_BASE_URL}/data/dump${selectedCampaignId ? `?campaign_id=${selectedCampaignId}` : ''}`;
+    window.open(dumpUrl, '_blank');
   };
 
   // Drag & drop handlers
@@ -471,9 +528,15 @@ const DataFolderPage: React.FC = () => {
           <h1 className="text-3xl font-extrabold text-blue-600">
             Lead Data Hub
           </h1>
-          <p className="text-slate-500 mt-1 text-sm">Upload spreadsheets or configure target Lead Qualification Profiles (LQP).</p>
+          <p className="text-slate-500 mt-1 text-sm">Upload spreadsheets, manage data dumping, or configure target Lead Qualification Profiles (LQP).</p>
         </div>
         <div className="flex flex-wrap gap-3 shrink-0">
+          <button
+            onClick={handleExportDataDump}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-2"
+          >
+            📤 Export Data Dump (CSV)
+          </button>
           <button
             onClick={handleDownloadTemplate}
             className="px-4 py-2 bg-white hover:bg-slate-50 text-blue-600 font-bold text-xs rounded-xl border border-slate-200 shadow-sm transition-all flex items-center gap-2"
@@ -729,12 +792,21 @@ const DataFolderPage: React.FC = () => {
       </div>
 
       {/* Spreadsheet / Lead Database Grid */}
-      <div className="glass-panel rounded-2xl bg-white border border-slate-200/60 shadow-sm overflow-hidden flex flex-col">
+      <div 
+        className="glass-panel rounded-2xl bg-white border border-slate-200/60 shadow-sm overflow-hidden flex flex-col"
+        onPaste={handleGridPaste}
+      >
         {/* Table Toolbar */}
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
           <div>
-            <h2 className="text-base font-bold text-slate-800">Spreadsheet Lead Editor</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Double-click or type inside cells to edit database records directly</p>
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-bold text-slate-800">Spreadsheet Lead Editor</h2>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1.5 ${isRealtimeConnected ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${isRealtimeConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
+                {isRealtimeConnected ? 'Live Sync Active' : 'Connecting Stream...'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">Double-click or type inside cells to edit directly. Paste tab-separated rows directly with Ctrl+V.</p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -748,31 +820,32 @@ const DataFolderPage: React.FC = () => {
 
         {/* Excel Interactive Spreadsheet Grid */}
         <div className="overflow-x-auto overflow-y-auto max-h-[60vh] border-slate-250">
-          <table className="w-full text-left text-[11px] border-collapse min-w-[1550px]">
+          <table className="w-full text-left text-[11px] border-collapse min-w-[1650px]">
             <thead>
               <tr className="bg-slate-100/90 text-slate-500 font-mono text-[10px] uppercase font-bold sticky top-0 z-10 border-b border-slate-200">
                 <th className="px-3 py-2 border-r border-slate-200 w-12 text-center">Row</th>
                 <th className="px-3 py-2 border-r border-slate-200 w-[110px]">First Name</th>
                 <th className="px-3 py-2 border-r border-slate-200 w-[110px]">Last Name</th>
                 <th className="px-3 py-2 border-r border-slate-200 w-[180px]">Mail ID</th>
-                <th className="px-3 py-2 border-r border-slate-200 w-[180px]">Alternative Mail</th>
-                <th className="px-3 py-2 border-r border-slate-200 w-[130px]">Title (Designation)</th>
-                <th className="px-3 py-2 border-r border-slate-200 w-[120px]">Department</th>
+                <th className="px-3 py-2 border-r border-slate-200 w-[110px] text-indigo-700">Order ID</th>
+                <th className="px-3 py-2 border-r border-slate-200 w-[130px]">Title / Designation</th>
+                <th className="px-3 py-2 border-r border-slate-200 w-[130px]">Company Website</th>
                 <th className="px-3 py-2 border-r border-slate-200 w-[130px]">Company Name</th>
-                <th className="px-3 py-2 border-r border-slate-200 w-[130px]">Website</th>
-                <th className="px-3 py-2 border-r border-slate-200 w-[140px]">LinkedIn ID</th>
+                <th className="px-3 py-2 border-r border-slate-200 w-[100px] text-emerald-700">Revenue</th>
+                <th className="px-3 py-2 border-r border-slate-200 w-[140px]">LinkedIn URL</th>
                 <th className="px-3 py-2 border-r border-slate-200 w-[110px]">Industry</th>
+                <th className="px-3 py-2 border-r border-slate-200 w-[90px]">City</th>
                 <th className="px-3 py-2 border-r border-slate-200 w-[80px]">State</th>
-                <th className="px-3 py-2 border-r border-slate-200 w-[80px]">Pin Code</th>
-                <th className="px-3 py-2 border-r border-slate-200 w-[90px]">Country</th>
-                <th className="px-3 py-2 w-[160px] text-center">Spreadsheet Actions</th>
+                <th className="px-3 py-2 border-r border-slate-200 w-[70px] text-center">Code</th>
+                <th className="px-3 py-2 border-r border-slate-200 w-[100px]">Country Name</th>
+                <th className="px-3 py-2 w-[150px] text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {spreadsheetRows.length === 0 ? (
                 <tr>
                   <td colSpan={15} className="py-12 text-center text-slate-400 font-medium">
-                    No matching database records found. Click "Add Lead Row" above to start entering details.
+                    No matching database records found. Click "Add Lead Row" above or upload a CSV/Excel to populate leads.
                   </td>
                 </tr>
               ) : (
@@ -818,17 +891,18 @@ const DataFolderPage: React.FC = () => {
                         />
                       </td>
 
-                      {/* Alt Mail ID Cell */}
+                      {/* Order ID Cell */}
                       <td className="p-0 border-r border-slate-150">
                         <input
                           type="text"
-                          value={row.alternative_email || ''}
-                          onChange={e => handleCellChange(row.id, 'alternative_email', e.target.value)}
-                          className="w-full h-full px-2 py-1.5 border-0 focus:ring-1 focus:ring-blue-500 bg-transparent"
+                          placeholder="ORD-..."
+                          value={row.order_id || ''}
+                          onChange={e => handleCellChange(row.id, 'order_id', e.target.value)}
+                          className="w-full h-full px-2 py-1.5 border-0 focus:ring-1 focus:ring-blue-500 bg-transparent font-mono text-slate-700"
                         />
                       </td>
 
-                      {/* Title Cell */}
+                      {/* Title / Designation Cell */}
                       <td className="p-0 border-r border-slate-150">
                         <input
                           type="text"
@@ -838,27 +912,7 @@ const DataFolderPage: React.FC = () => {
                         />
                       </td>
 
-                      {/* Department Cell */}
-                      <td className="p-0 border-r border-slate-150">
-                        <input
-                          type="text"
-                          value={row.department || ''}
-                          onChange={e => handleCellChange(row.id, 'department', e.target.value)}
-                          className="w-full h-full px-2 py-1.5 border-0 focus:ring-1 focus:ring-blue-500 bg-transparent font-semibold"
-                        />
-                      </td>
-
-                      {/* Company Name Cell */}
-                      <td className="p-0 border-r border-slate-150">
-                        <input
-                          type="text"
-                          value={row.company_name || ''}
-                          onChange={e => handleCellChange(row.id, 'company_name', e.target.value)}
-                          className="w-full h-full px-2 py-1.5 border-0 focus:ring-1 focus:ring-blue-500 bg-transparent"
-                        />
-                      </td>
-
-                      {/* Website Cell */}
+                      {/* Company Website Cell */}
                       <td className="p-0 border-r border-slate-150">
                         <input
                           type="text"
@@ -868,7 +922,28 @@ const DataFolderPage: React.FC = () => {
                         />
                       </td>
 
-                      {/* LinkedIn Cell */}
+                      {/* Company Name Cell */}
+                      <td className="p-0 border-r border-slate-150">
+                        <input
+                          type="text"
+                          value={row.company_name || ''}
+                          onChange={e => handleCellChange(row.id, 'company_name', e.target.value)}
+                          className="w-full h-full px-2 py-1.5 border-0 focus:ring-1 focus:ring-blue-500 bg-transparent font-semibold"
+                        />
+                      </td>
+
+                      {/* Revenue Cell */}
+                      <td className="p-0 border-r border-slate-150">
+                        <input
+                          type="text"
+                          placeholder="$10M"
+                          value={row.revenue || ''}
+                          onChange={e => handleCellChange(row.id, 'revenue', e.target.value)}
+                          className="w-full h-full px-2 py-1.5 border-0 focus:ring-1 focus:ring-blue-500 bg-transparent font-semibold text-emerald-700"
+                        />
+                      </td>
+
+                      {/* Person's LinkedIn URL Cell */}
                       <td className="p-0 border-r border-slate-150">
                         <input
                           type="text"
@@ -888,6 +963,17 @@ const DataFolderPage: React.FC = () => {
                         />
                       </td>
 
+                      {/* City Cell */}
+                      <td className="p-0 border-r border-slate-150">
+                        <input
+                          type="text"
+                          placeholder="City"
+                          value={row.city || ''}
+                          onChange={e => handleCellChange(row.id, 'city', e.target.value)}
+                          className="w-full h-full px-2 py-1.5 border-0 focus:ring-1 focus:ring-blue-500 bg-transparent"
+                        />
+                      </td>
+
                       {/* State Cell */}
                       <td className="p-0 border-r border-slate-150">
                         <input
@@ -898,17 +984,18 @@ const DataFolderPage: React.FC = () => {
                         />
                       </td>
 
-                      {/* Pin Code Cell */}
+                      {/* Country Code Cell */}
                       <td className="p-0 border-r border-slate-150">
                         <input
                           type="text"
-                          value={row.zip_code || row.pin_code || ''}
-                          onChange={e => handleCellChange(row.id, 'zip_code', e.target.value)}
-                          className="w-full h-full px-2 py-1.5 border-0 focus:ring-1 focus:ring-blue-500 bg-transparent"
+                          placeholder="US"
+                          value={row.country_code || ''}
+                          onChange={e => handleCellChange(row.id, 'country_code', e.target.value)}
+                          className="w-full h-full px-2 py-1.5 border-0 focus:ring-1 focus:ring-blue-500 bg-transparent uppercase font-mono text-center font-bold text-slate-700"
                         />
                       </td>
 
-                      {/* Country Cell */}
+                      {/* Country Name Cell */}
                       <td className="p-0 border-r border-slate-150">
                         <input
                           type="text"

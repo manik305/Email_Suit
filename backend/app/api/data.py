@@ -8,10 +8,12 @@ Routes
   POST  /recipients/assign              – bulk-assign recipients to a campaign
   PATCH /recipients/{id}/campaign       – assign single recipient to campaign
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, Body, Query, Depends, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Body, Query, Depends, Form, Response
 from app.api.auth import get_current_user_email
 import pandas as pd
 import io
+import csv
+from datetime import datetime
 from .. import models, schemas
 from typing import List, Optional
 from pydantic import BaseModel
@@ -23,116 +25,130 @@ import logging
 data_logger = logging.getLogger(__name__)
 
 
-# ─── Upload ───────────────────────────────────────────────────────────────────
+# ─── Upload / Ingest Leads (Redesigned Schema) ────────────────────────────────
+
+SCHEMA_DEFINITIONS = [
+    ("first name", ["first name", "first_name", "firstname", "first"]),
+    ("last name", ["last name", "last_name", "lastname", "last"]),
+    ("mail id", ["mail id", "email", "mail", "email address", "e-mail", "email_address"]),
+    ("title / designation", ["title / designation", "title", "designation", "job title", "role"]),
+    ("company website", ["company website", "website", "company_website", "web", "url", "site"]),
+    ("company name", ["company name", "company", "company_name", "organization"]),
+    ("revenue", ["revenue", "company revenue", "revenue of that company", "annual revenue"]),
+    ("person's linkedin url", ["person's linkedin url", "persons linkedin url", "person linkedin url", "linkedin url", "linkedin id", "linkedin", "linkedin_url"]),
+    ("industry", ["industry", "sector"]),
+    ("city", ["city", "town"]),
+    ("state", ["state", "province"]),
+    ("country code", ["country code", "country_code", "countrycode", "iso code", "iso_code"]),
+    ("country name", ["country name", "country", "nation"]),
+]
 
 @router.post("/upload", response_model=dict)
 async def upload_data(file: UploadFile = File(...), campaign_id: Optional[str] = Form(None)):
     content = await file.read()
     
     # 1. Determine format and parse
-    if file.filename.endswith(('.xls', '.xlsx')):
+    filename_lower = file.filename.lower()
+    if filename_lower.endswith(('.xls', '.xlsx')):
         try:
             df = pd.read_excel(io.BytesIO(content))
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to parse Excel file: {str(e)}")
-    elif file.filename.endswith('.csv'):
+    elif filename_lower.endswith('.csv'):
         try:
             df = pd.read_csv(io.BytesIO(content))
+        except UnicodeDecodeError:
+            try:
+                df = pd.read_csv(io.BytesIO(content), encoding="latin-1")
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to parse CSV file: {str(e)}")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to parse CSV file: {str(e)}")
     else:
         raise HTTPException(status_code=400, detail="Unsupported file format. Please upload Excel (.xlsx/.xls) or CSV.")
     
-    # 2. Strict Header Validation
+    # 2. Strict Header Validation matching the redesigned schema
     original_headers = [str(c) for c in df.columns]
     normalized_headers = [c.strip().lower() for c in original_headers]
     df.columns = normalized_headers
     
-    REQUIRED_COLUMNS = [
-        "first name",
-        "last name",
-        "mail id",
-        "alternative mail id",
-        "title",
-        "department",
-        "company name",
-        "website",
-        "linkedin id",
-        "industry",
-        "state",
-        "pin code",
-        "country"
-    ]
-    
-    missing_cols = [col for col in REQUIRED_COLUMNS if col not in normalized_headers]
+    missing_cols = []
+    col_map = {}
+    for canonical, aliases in SCHEMA_DEFINITIONS:
+        matched = next((a for a in aliases if a in normalized_headers), None)
+        if not matched:
+            missing_cols.append(canonical)
+        else:
+            col_map[canonical] = matched
+            
     if missing_cols:
         missing_str = ", ".join([f"'{c}'" for c in missing_cols])
         raise HTTPException(
             status_code=400,
-            detail=f"Validation failed. The file is missing these required headers: {missing_str}"
+            detail=f"Validation failed. The file is missing these required segment headers: {missing_str}"
         )
     
+    def clean_val(v):
+        if v is None: return None
+        if str(v).lower() == 'nan' or str(v).strip() == '': return None
+        return str(v).strip()
+
+    def clean_email(v):
+        val = clean_val(v)
+        if not val: return None
+        return val.strip(" \t\n\r,;\"'")
+
     try:
         count = 0
         duplicates_skipped = 0
         for _, row in df.iterrows():
-            email = str(row["mail id"]).strip()
-            if not email or '@' not in email or email.lower() == 'nan':
+            email = clean_email(row[col_map["mail id"]])
+            if not email or '@' not in email:
                 continue
                 
-            first_name = str(row["first name"]).strip() if pd.notna(row["first name"]) else None
-            last_name = str(row["last name"]).strip() if pd.notna(row["last name"]) else None
-            
-            # Combine into name
-            name_parts = []
-            if first_name: name_parts.append(first_name)
-            if last_name: name_parts.append(last_name)
+            first_name = clean_val(row[col_map["first name"]])
+            last_name = clean_val(row[col_map["last name"]])
+            name_parts = [p for p in [first_name, last_name] if p]
             name = " ".join(name_parts) if name_parts else None
             
-            alt_email = str(row["alternative mail id"]).strip() if pd.notna(row["alternative mail id"]) else None
-            title = str(row["title"]).strip() if pd.notna(row["title"]) else None
-            dept = str(row["department"]).strip() if pd.notna(row["department"]) else None
-            company = str(row["company name"]).strip() if pd.notna(row["company name"]) else None
-            web = str(row["website"]).strip() if pd.notna(row["website"]) else None
-            linkedin = str(row["linkedin id"]).strip() if pd.notna(row["linkedin id"]) else None
-            ind = str(row["industry"]).strip() if pd.notna(row["industry"]) else None
-            st = str(row["state"]).strip() if pd.notna(row["state"]) else None
-            pin = str(row["pin code"]).strip() if pd.notna(row["pin code"]) else None
-            ctry = str(row["country"]).strip() if pd.notna(row["country"]) else None
+            title = clean_val(row[col_map["title / designation"]])
+            web = clean_val(row[col_map["company website"]])
+            company = clean_val(row[col_map["company name"]])
+            rev = clean_val(row[col_map["revenue"]])
+            linkedin = clean_val(row[col_map["person's linkedin url"]])
+            ind = clean_val(row[col_map["industry"]])
+            city = clean_val(row[col_map["city"]])
+            st = clean_val(row[col_map["state"]])
+            country_code = clean_val(row[col_map["country code"]])
+            ctry = clean_val(row[col_map["country name"]])
             
-            region_parts = []
-            if st: region_parts.append(st)
-            if ctry: region_parts.append(ctry)
-            region = ", ".join(region_parts) if region_parts else None
-            
-            def clean_val(v):
-                if v is None: return None
-                if str(v).lower() == 'nan' or str(v).strip() == '': return None
-                return str(v).strip()
+            # Optional extra fields
+            alt_email = None
+            for alt_key in ["alternative mail id", "alternative_email", "alt email", "alt mail"]:
+                if alt_key in normalized_headers:
+                    alt_email = clean_email(row[alt_key])
+                    break
+                    
+            dept = None
+            for dept_key in ["department", "dept"]:
+                if dept_key in normalized_headers:
+                    dept = clean_val(row[dept_key])
+                    break
+                    
+            pin = None
+            for pin_key in ["pin code", "pin_code", "zip code", "zip_code", "zip", "postal code"]:
+                if pin_key in normalized_headers:
+                    pin = clean_val(row[pin_key])
+                    break
 
-            def clean_email(v):
-                val = clean_val(v)
-                if not val: return None
-                return val.strip(" \t\n\r,;\"'")
-                
-            email = clean_email(email)
-            first_name = clean_val(first_name)
-            last_name = clean_val(last_name)
-            name = clean_val(name)
-            alt_email = clean_email(alt_email)
-            title = clean_val(title)
-            dept = clean_val(dept)
-            company = clean_val(company)
-            web = clean_val(web)
-            linkedin = clean_val(linkedin)
-            ind = clean_val(ind)
-            st = clean_val(st)
-            pin = clean_val(pin)
-            ctry = clean_val(ctry)
-            region = clean_val(region)
-            
-            if not email:
-                continue
+            order_id = None
+            for o_key in ["order id", "order_id", "orderid", "order number", "order_no"]:
+                if o_key in normalized_headers:
+                    order_id = clean_val(row[o_key])
+                    break
+
+            region_parts = [p for p in [city, st, ctry] if p]
+            region = ", ".join(region_parts) if region_parts else None
                 
             if campaign_id:
                 existing = await models.Recipient.find_one(email=email, campaign_id=campaign_id)
@@ -146,13 +162,17 @@ async def upload_data(file: UploadFile = File(...), campaign_id: Optional[str] =
                     first_name=first_name,
                     last_name=last_name,
                     alternative_email=alt_email,
+                    order_id=order_id,
                     title=title,
                     department=dept,
                     company_name=company,
                     website=web,
+                    revenue=rev,
                     linkedin_url=linkedin,
                     industry=ind,
+                    city=city,
                     state=st,
+                    country_code=country_code,
                     zip_code=pin,
                     country=ctry,
                     region=region,
@@ -162,17 +182,37 @@ async def upload_data(file: UploadFile = File(...), campaign_id: Optional[str] =
                 await recipient.insert()
                 count += 1
             else:
+                new_status = "pending" if existing.status not in ("sent", "replied", "bounced") else existing.status
+                await existing.update({"$set": {
+                    "name": name or existing.name,
+                    "first_name": first_name or existing.first_name,
+                    "last_name": last_name or existing.last_name,
+                    "alternative_email": alt_email or existing.alternative_email,
+                    "title": title or existing.title,
+                    "department": dept or existing.department,
+                    "company_name": company or existing.company_name,
+                    "website": web or existing.website,
+                    "revenue": rev or existing.revenue,
+                    "linkedin_url": linkedin or existing.linkedin_url,
+                    "industry": ind or existing.industry,
+                    "city": city or existing.city,
+                    "state": st or existing.state,
+                    "country_code": country_code or existing.country_code,
+                    "zip_code": pin or existing.zip_code,
+                    "country": ctry or existing.country,
+                    "region": region or existing.region,
+                    "status": new_status
+                }})
                 duplicates_skipped += 1
                 
         await log_activity(
             action="data_uploaded",
             category="data",
-            summary=f"File '{file.filename}' uploaded with {count} recipients" + (f" to campaign {campaign_id}" if campaign_id else "") + f" ({duplicates_skipped} duplicates skipped)",
+            summary=f"File '{file.filename}' uploaded with {count} recipients" + (f" to campaign {campaign_id}" if campaign_id else "") + f" ({duplicates_skipped} duplicates updated)",
             campaign_id=campaign_id,
             details={"filename": file.filename, "rows_added": count, "duplicates_skipped": duplicates_skipped, "campaign_id": campaign_id},
         )
         return {"status": "success", "rows_added": count, "duplicates_skipped": duplicates_skipped}
-
 
     except HTTPException:
         raise
@@ -188,6 +228,154 @@ async def upload_data(file: UploadFile = File(...), campaign_id: Optional[str] =
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
 
 
+# ─── Data Dumping Method (Export Dump & Template) ────────────────────────────
+
+@router.get("/dump")
+@router.get("/export")
+async def export_data_dump(
+    campaign_id: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None)
+):
+    """
+    Data Dumping Method:
+    Exports/dumps recipient and lead records adhering to the redesigned schema:
+    First Name, Last Name, Mail ID, Title / Designation, Company Website, 
+    Company Name, Revenue, Person's LinkedIn URL, Industry, City, State, 
+    Country Code, Country Name, Status.
+    """
+    from app.database import db_pool
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    query = "SELECT * FROM public.recipients"
+    params = []
+    where_clauses = []
+    if campaign_id:
+        from uuid import UUID
+        try:
+            cid = UUID(campaign_id)
+            params.append(cid)
+            where_clauses.append(f"campaign_id = ${len(params)}")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid campaign_id format")
+            
+    if where_clauses:
+        query += " WHERE " + " AND ".join(where_clauses)
+    query += " ORDER BY created_at DESC"
+    
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(query, *params)
+        
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Redesigned schema CSV headers matching the requested segment
+    writer.writerow([
+        "First Name",
+        "Last Name",
+        "Mail ID",
+        "Title / Designation",
+        "Company Website",
+        "Company Name",
+        "Revenue",
+        "Person's LinkedIn URL",
+        "Industry",
+        "City",
+        "State",
+        "Country Code",
+        "Country Name",
+        "Status"
+    ])
+    
+    for r in rows:
+        writer.writerow([
+            r.get("first_name") or "",
+            r.get("last_name") or "",
+            r.get("email") or "",
+            r.get("title") or "",
+            r.get("website") or "",
+            r.get("company_name") or "",
+            r.get("revenue") or "",
+            r.get("linkedin_url") or "",
+            r.get("industry") or "",
+            r.get("city") or "",
+            r.get("state") or "",
+            r.get("country_code") or "",
+            r.get("country") or "",
+            r.get("status") or "pending"
+        ])
+        
+    output.seek(0)
+    filename = f"leads_data_dump_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
+
+
+@router.get("/template")
+async def download_sample_template():
+    """Returns a sample CSV with the exact redesigned segment headers and representative data."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "First Name",
+        "Last Name",
+        "Mail ID",
+        "Title / Designation",
+        "Company Website",
+        "Company Name",
+        "Revenue",
+        "Person's LinkedIn URL",
+        "Industry",
+        "City",
+        "State",
+        "Country Code",
+        "Country Name"
+    ])
+    writer.writerow([
+        "John",
+        "Doe",
+        "john.doe@techscale.io",
+        "VP of Sales",
+        "https://techscale.io",
+        "TechScale Inc",
+        "$25M",
+        "https://linkedin.com/in/johndoe",
+        "Software",
+        "San Francisco",
+        "California",
+        "US",
+        "United States"
+    ])
+    writer.writerow([
+        "Jane",
+        "Smith",
+        "jane.smith@apexsolutions.com",
+        "Chief Technology Officer",
+        "https://apexsolutions.com",
+        "Apex Solutions",
+        "$50M",
+        "https://linkedin.com/in/janesmith",
+        "Information Technology",
+        "London",
+        "Greater London",
+        "GB",
+        "United Kingdom"
+    ])
+    output.seek(0)
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=leads_data_dump_template.csv"
+        }
+    )
+
+
 # ─── List recipients ──────────────────────────────────────────────────────────
 
 class RecipientCreateRequest(BaseModel):
@@ -196,14 +384,21 @@ class RecipientCreateRequest(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     alternative_email: Optional[str] = None
+    order_id: Optional[str] = None
     title: Optional[str] = None
+    designation: Optional[str] = None
     department: Optional[str] = None
     company_name: Optional[str] = None
     website: Optional[str] = None
+    revenue: Optional[str] = None
     linkedin_url: Optional[str] = None
+    linkedin_id: Optional[str] = None
     industry: Optional[str] = None
+    city: Optional[str] = None
     state: Optional[str] = None
+    country_code: Optional[str] = None
     zip_code: Optional[str] = None
+    pin_code: Optional[str] = None
     country: Optional[str] = None
     region: Optional[str] = None
     campaign_id: Optional[str] = None
@@ -220,20 +415,24 @@ async def create_recipient(req: RecipientCreateRequest):
         
     recipient = models.Recipient(
         email=req.email,
-        name=req.name or f"{req.first_name or ''} {req.last_name or ''}".strip(),
+        name=req.name or f"{req.first_name or ''} {req.last_name or ''}".strip() or None,
         first_name=req.first_name,
         last_name=req.last_name,
         alternative_email=req.alternative_email,
-        title=req.title,
+        order_id=req.order_id,
+        title=req.title or req.designation,
         department=req.department,
         company_name=req.company_name,
         website=req.website,
-        linkedin_url=req.linkedin_url,
+        revenue=req.revenue,
+        linkedin_url=req.linkedin_url or req.linkedin_id,
         industry=req.industry,
+        city=req.city,
         state=req.state,
-        zip_code=req.zip_code,
+        country_code=req.country_code,
+        zip_code=req.zip_code or req.pin_code,
         country=req.country,
-        region=req.region or f"{req.state or ''}, {req.country or ''}".strip(", "),
+        region=req.region or ", ".join(filter(None, [req.city, req.state, req.country])) or None,
         campaign_id=req.campaign_id or None,
         status="pending"
     )
@@ -486,6 +685,9 @@ async def reset_database():
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_industries JSONB DEFAULT '[]';
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_regions JSONB DEFAULT '[]';
                     ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS icp_active BOOLEAN DEFAULT FALSE;
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS revenue VARCHAR(255);
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS country_code VARCHAR(50);
+                    ALTER TABLE public.recipients ADD COLUMN IF NOT EXISTS city VARCHAR(255);
                 """)
                 
             return {"status": "success", "detail": "Database dropped and reset successfully."}
@@ -530,12 +732,19 @@ async def get_recipient_draft_preview(recipient_id: str):
             .replace("{{first_name}}", recipient.first_name or "").replace("{first_name}", recipient.first_name or "")
             .replace("{{last_name}}", recipient.last_name or "").replace("{last_name}", recipient.last_name or "")
             .replace("{{email}}", recipient.email).replace("{email}", recipient.email)
+            .replace("{{title}}", recipient.title or "").replace("{title}", recipient.title or "")
             .replace("{{designation}}", recipient.title or "").replace("{designation}", recipient.title or "")
             .replace("{{department}}", recipient.department or "").replace("{department}", recipient.department or "")
             .replace("{{industry}}", recipient.industry or "").replace("{industry}", recipient.industry or "")
             .replace("{{region}}", recipient.region or "").replace("{region}", recipient.region or "")
             .replace("{{company_name}}", recipient.company_name or "").replace("{company_name}", recipient.company_name or "")
             .replace("{{company}}", recipient.company_name or "").replace("{company}", recipient.company_name or "")
+            .replace("{{revenue}}", recipient.revenue or "").replace("{revenue}", recipient.revenue or "")
+            .replace("{{city}}", recipient.city or "").replace("{city}", recipient.city or "")
+            .replace("{{state}}", recipient.state or "").replace("{state}", recipient.state or "")
+            .replace("{{country_code}}", recipient.country_code or "").replace("{country_code}", recipient.country_code or "")
+            .replace("{{country}}", recipient.country or "").replace("{country}", recipient.country or "")
+            .replace("{{website}}", recipient.website or "").replace("{website}", recipient.website or "")
         )
 
     if not is_follow_up:

@@ -979,6 +979,12 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         .replace("{{region}}", r.region or "").replace("{region}", r.region or "")
                         .replace("{{company_name}}", r.company_name or "").replace("{company_name}", r.company_name or "")
                         .replace("{{company}}", r.company_name or "").replace("{company}", r.company_name or "")
+                        .replace("{{revenue}}", r.revenue or "").replace("{revenue}", r.revenue or "")
+                        .replace("{{city}}", r.city or "").replace("{city}", r.city or "")
+                        .replace("{{state}}", r.state or "").replace("{state}", r.state or "")
+                        .replace("{{country_code}}", r.country_code or "").replace("{country_code}", r.country_code or "")
+                        .replace("{{country}}", r.country or "").replace("{country}", r.country or "")
+                        .replace("{{website}}", r.website or "").replace("{website}", r.website or "")
                     )
                     subject = render_dynamic_date_tokens(subject)
                     body = (
@@ -993,6 +999,12 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         .replace("{{region}}", r.region or "").replace("{region}", r.region or "")
                         .replace("{{company_name}}", r.company_name or "").replace("{company_name}", r.company_name or "")
                         .replace("{{company}}", r.company_name or "").replace("{company}", r.company_name or "")
+                        .replace("{{revenue}}", r.revenue or "").replace("{revenue}", r.revenue or "")
+                        .replace("{{city}}", r.city or "").replace("{city}", r.city or "")
+                        .replace("{{state}}", r.state or "").replace("{state}", r.state or "")
+                        .replace("{{country_code}}", r.country_code or "").replace("{country_code}", r.country_code or "")
+                        .replace("{{country}}", r.country or "").replace("{country}", r.country or "")
+                        .replace("{{website}}", r.website or "").replace("{website}", r.website or "")
                     )
                     body = render_dynamic_date_tokens(body)
                 else:
@@ -1022,6 +1034,12 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                         .replace("{{region}}", r.region or "").replace("{region}", r.region or "")
                         .replace("{{company_name}}", r.company_name or "").replace("{company_name}", r.company_name or "")
                         .replace("{{company}}", r.company_name or "").replace("{company}", r.company_name or "")
+                        .replace("{{revenue}}", r.revenue or "").replace("{revenue}", r.revenue or "")
+                        .replace("{{city}}", r.city or "").replace("{city}", r.city or "")
+                        .replace("{{state}}", r.state or "").replace("{state}", r.state or "")
+                        .replace("{{country_code}}", r.country_code or "").replace("{country_code}", r.country_code or "")
+                        .replace("{{country}}", r.country or "").replace("{country}", r.country or "")
+                        .replace("{{website}}", r.website or "").replace("{website}", r.website or "")
                     )
                     subject = render_dynamic_date_tokens(subject)
                     
@@ -1049,6 +1067,12 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                             .replace("{{region}}", r.region or "").replace("{region}", r.region or "")
                             .replace("{{company_name}}", r.company_name or "").replace("{company_name}", r.company_name or "")
                             .replace("{{company}}", r.company_name or "").replace("{company}", r.company_name or "")
+                            .replace("{{revenue}}", r.revenue or "").replace("{revenue}", r.revenue or "")
+                            .replace("{{city}}", r.city or "").replace("{city}", r.city or "")
+                            .replace("{{state}}", r.state or "").replace("{state}", r.state or "")
+                            .replace("{{country_code}}", r.country_code or "").replace("{country_code}", r.country_code or "")
+                            .replace("{{country}}", r.country or "").replace("{country}", r.country or "")
+                            .replace("{{website}}", r.website or "").replace("{website}", r.website or "")
                         )
                     body = render_dynamic_date_tokens(body)
 
@@ -1191,6 +1215,18 @@ async def process_campaign_queue(campaign_id: str, limit: Optional[int] = None) 
                                     }
                                 })
                         sent += 1
+                        try:
+                            from app.event_bus import publish_event
+                            await publish_event("email_sent", {
+                                "campaign_id": str(campaign.id),
+                                "recipient_id": str(r.id),
+                                "email": str(r.email),
+                                "name": recipient_name,
+                                "is_follow_up": is_follow_up,
+                                "status": "sent"
+                            })
+                        except Exception:
+                            pass
                     except Exception as db_exc:
                         logger.error("Failed to update DB after successful send to %s: %s", r.email, db_exc)
                         # Bulletproof fallback using direct asyncpg query to ensure status & next_follow_up_at are saved

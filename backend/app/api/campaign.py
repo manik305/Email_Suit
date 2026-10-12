@@ -66,9 +66,14 @@ def _render_body(template: str, recipient: models.Recipient) -> str:
         .replace("{{designation}}", recipient.title or "").replace("{designation}", recipient.title or "")
         .replace("{{department}}", recipient.department or "").replace("{department}", recipient.department or "")
         .replace("{{industry}}", recipient.industry or "").replace("{industry}", recipient.industry or "")
-        .replace("{{region}}", recipient.region or "").replace("{region}", recipient.region or "")
         .replace("{{company_name}}", recipient.company_name or "").replace("{company_name}", recipient.company_name or "")
         .replace("{{company}}", recipient.company_name or "").replace("{company}", recipient.company_name or "")
+        .replace("{{revenue}}", recipient.revenue or "").replace("{revenue}", recipient.revenue or "")
+        .replace("{{city}}", recipient.city or "").replace("{city}", recipient.city or "")
+        .replace("{{state}}", recipient.state or "").replace("{state}", recipient.state or "")
+        .replace("{{country_code}}", recipient.country_code or "").replace("{country_code}", recipient.country_code or "")
+        .replace("{{country}}", recipient.country or "").replace("{country}", recipient.country or "")
+        .replace("{{website}}", recipient.website or "").replace("{website}", recipient.website or "")
     )
     return render_dynamic_date_tokens(rendered)
 
@@ -844,18 +849,22 @@ async def import_campaign_leads(
         name = " ".join(name_parts) if name_parts else None
         
         alt_email = get_row_val(row, "alternative mail id", ["alternative_email", "alternative email", "alt email", "alt mail", "alternative mail"])
-        title = get_row_val(row, "title", ["designation", "job title", "job_title", "role"])
+        title = get_row_val(row, "title", ["title / designation", "designation", "job title", "job_title", "role"])
         dept = get_row_val(row, "department", ["dept"])
-        company = get_row_val(row, "company name", ["company_name", "company"])
-        web = get_row_val(row, "website", ["web", "url", "site"])
-        linkedin = get_row_val(row, "linkedin id", ["linkedin", "linkedin url", "linkedin_url"])
-        ind = get_row_val(row, "industry")
-        st = get_row_val(row, "state", ["region"])
+        company = get_row_val(row, "company name", ["company_name", "company", "organization"])
+        web = get_row_val(row, "company website", ["website", "company_website", "web", "url", "site"])
+        rev = get_row_val(row, "revenue", ["company revenue", "revenue of that company", "annual revenue"])
+        linkedin = get_row_val(row, "person's linkedin url", ["persons linkedin url", "person linkedin url", "linkedin url", "linkedin id", "linkedin", "linkedin_url"])
+        ind = get_row_val(row, "industry", ["sector"])
+        city = get_row_val(row, "city", ["town"])
+        st = get_row_val(row, "state", ["province", "region"])
+        country_code = get_row_val(row, "country code", ["country_code", "countrycode", "iso code", "iso_code"])
         pin = get_row_val(row, "pin code", ["pin_code", "pincode", "zip code", "zip_code", "zip", "postal code"])
-        ctry = get_row_val(row, "country")
+        ctry = get_row_val(row, "country", ["country name", "country_name", "nation"])
         
         # Region can be a combination of state/country
         region_parts = []
+        if city: region_parts.append(city)
         if st: region_parts.append(st)
         if ctry: region_parts.append(ctry)
         region = ", ".join(region_parts) if region_parts else None
@@ -875,9 +884,12 @@ async def import_campaign_leads(
         dept = clean_val(dept)
         company = clean_val(company)
         web = clean_val(web)
+        rev = clean_val(rev)
         linkedin = clean_val(linkedin)
         ind = clean_val(ind)
+        city = clean_val(city)
         st = clean_val(st)
+        country_code = clean_val(country_code)
         pin = clean_val(pin)
         ctry = clean_val(ctry)
         region = clean_val(region)
@@ -903,9 +915,12 @@ async def import_campaign_leads(
                 department=dept,
                 company_name=company,
                 website=web,
+                revenue=rev,
                 linkedin_url=linkedin,
                 industry=ind,
+                city=city,
                 state=st,
+                country_code=country_code,
                 zip_code=pin,
                 country=ctry,
                 region=region,
@@ -926,9 +941,12 @@ async def import_campaign_leads(
                 "department": dept or existing.department,
                 "company_name": company or existing.company_name,
                 "website": web or existing.website,
+                "revenue": rev or existing.revenue,
                 "linkedin_url": linkedin or existing.linkedin_url,
                 "industry": ind or existing.industry,
+                "city": city or existing.city,
                 "state": st or existing.state,
+                "country_code": country_code or existing.country_code,
                 "zip_code": pin or existing.zip_code,
                 "country": ctry or existing.country,
                 "region": region or existing.region,
